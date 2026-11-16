@@ -1,0 +1,256 @@
+---
+title: "Electrochemical Measurement Statistics"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Electrochemical Measurement Statistics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6, fig.height = 4,
+  fig.align = "center"
+)
+set.seed(11)
+```
+
+```{r load}
+library(crossStatR)
+library(ggplot2)
+```
+
+## Development validation
+
+This vignette accompanies development version 0.99.1.
+The benchmark covers selected configurations, and the validation study uses
+100 datasets per metric with 99 resampling draws. These small simulations
+provide diagnostics; they do not establish general statistical calibration.
+The local study observed 24% peak false positives, 10% peak detection,
+74.9% transfer interval coverage, and 43% drift interval coverage in the
+tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+
+## Scope of this vignette
+
+Electrochemical measurements (cyclic voltammetry, amperometry, impedance
+spectroscopy, sensor calibration curves) share a common statistical shape:
+a measured signal that contains peaks, sits on a baseline, drifts over the
+course of the experiment, and must be calibrated against known concentrations
+to produce a number the analyst reports. crossStatR provides four functions
+for these workflows: `adaptive_baseline()` for baseline estimation,
+`weighted_peak_fit()` for multi-peak fitting, `drift_correct_stat()` for
+instrument drift correction with propagated uncertainty, and `robust_lod()`
+for limits of detection and quantification.
+
+This vignette works through a synthetic cyclic voltammetry example that
+exhibits all four features. The example discusses the Currie (1968) and Hubaux-Vos (1970)
+LOD frameworks, what drift correction does and does not do, and where the
+package's defaults can mislead the analyst.
+
+## Simulated cyclic voltammetry
+
+The example simulates a single forward sweep from `-0.2 V` to `0.6 V` with a Gaussian
+redox peak near `0.25 V`, a slowly varying quadratic baseline, additive
+Gaussian measurement noise, and a linear drift in the baseline that depends
+on acquisition time.
+
+```{r sim-cv}
+set.seed(202)
+v <- seq(-0.2, 0.6, length.out = 400)
+time_index <- seq_len(length(v))                       # seconds
+baseline <- 1.0 + 0.6 * v + 0.9 * v^2                  # quadratic baseline
+drift     <- 0.0008 * time_index                       # linear in time
+peak1     <- 12 * exp(-(v - 0.25)^2 / (2 * 0.025^2))   # faradaic peak
+noise     <- rnorm(length(v), sd = 0.08)
+current   <- baseline + drift + peak1 + noise
+cv_df <- data.frame(v = v, current = current, time = time_index)
+```
+
+```{r plot-cv, fig.cap = "Simulated cyclic voltammogram with a quadratic baseline, linear drift, and additive Gaussian noise. The faradaic peak sits near 0.25 V."}
+ggplot(cv_df, aes(x = v, y = current)) +
+  geom_line(colour = "steelblue") +
+  labs(x = "Potential (V)", y = "Current (µA)") +
+  theme_bw()
+```
+
+## Baseline estimation
+
+`adaptive_baseline()` offers two backends. The default is asymmetric least
+squares (Eilers and Boelens, 2005), which iteratively reweights a penalised
+least-squares fit so the baseline tracks the lower envelope of the signal.
+The second backend is `lowess`, which the package includes as a sanity check rather
+than as a recommended default; it does not try to be asymmetric and will
+be biased upward when the signal sits well above the true baseline.
+
+```{r baseline}
+bl <- adaptive_baseline(v, current, method = "asls",
+                        lambda = 1e7, p = 0.01)
+print(bl)
+```
+
+Inspect the corrected signal for systematic residual structure. If the ALS
+baseline tracks the top of a wide peak rather than sitting below it, the
+penalty `lambda` is too small or the asymmetry parameter `p` is too large.
+
+```{r plot-baseline, fig.cap = "Raw signal, ALS baseline, and baseline-corrected current. The corrected peak shape should be roughly symmetric and return to zero away from the peak."}
+plot_df <- data.frame(
+  v = rep(v, 3),
+  current = c(current, bl$baseline, bl$corrected),
+  what = factor(rep(c("raw", "baseline", "corrected"),
+                    each = length(v)),
+                levels = c("raw", "baseline", "corrected"))
+)
+ggplot(plot_df, aes(x = v, y = current, colour = what)) +
+  geom_line() + facet_wrap(~ what, ncol = 1, scales = "free_y") +
+  labs(x = "Potential (V)", y = "Current (µA)") +
+  theme_bw() + theme(legend.position = "none")
+```
+
+## Peak fitting on the baseline-corrected signal
+
+With the baseline subtracted the example can fit the redox peak with
+`weighted_peak_fit()`. The example uses the Gaussian line shape; the Lorentzian and
+pseudo-Voigt shapes are available for spectra with broader, more
+non-Gaussian peaks.
+
+```{r peakfit}
+pf <- weighted_peak_fit(v, bl$corrected, peaks = "auto",
+                       n_peaks = 1, peak_shape = "gaussian")
+print(pf)
+```
+
+The fit returns heights, centres, and widths with `nls` asymptotic standard
+errors. The example does not pick the number of peaks by AIC automatically; an extra
+spurious peak in downstream analysis is usually more costly than a missed
+small peak, so the example leaves the count to the analyst. Inspect `aic`, `bic`, and
+the residual plot before committing to a fit.
+
+## Drift correction with uncertainty
+
+The linear drift in time (the `0.0008 * time_index` term) is a textbook
+example of instrumental drift. In a real experiment the analyst would not know the
+drift function in advance. The analyst would instead measure reference standards
+periodically and pass them to `drift_correct_stat()`. Here the example simulates a
+few reference readings:
+
+```{r drift}
+ref_df <- data.frame(
+  time = seq(20, 380, by = 40),
+  y    = 0.0008 * seq(20, 380, by = 40) + rnorm(10, sd = 0.02)
+)
+dri <- drift_correct_stat(current, time_index, reference = ref_df,
+                          drift_model = "linear")
+print(dri)
+```
+
+What drift correction does: it fits a smooth drift model to the reference
+standards, anchors the corrected signal at the median reference time, and
+returns a delta-method standard error on the correction at each time point.
+The correction uncertainty is propagated from the drift model via the
+formula `\mathrm{Var}(\hat d(t_i) - \hat d(t_{\mathrm{ref}})) = \mathrm{Var}(\hat d(t_i)) + \mathrm{Var}(\hat d(t_{\mathrm{ref}})) - 2\, \mathrm{Cov}(\hat d(t_i), \hat d(t_{\mathrm{ref}}))`.
+
+What drift correction does *not* do: it does not make the corrected
+measurements independent. If the original measurements are correlated
+through shared noise structure, subtracting a fitted drift function does
+not remove that correlation. Treat the corrected measurements as the analyst
+would the originals for downstream independence assumptions; if the noise
+has temporal autocorrelation, fit a model that accounts for it (e.g.
+generalised least squares with a correlation structure, as discussed in
+Davison and Hinkley, 1997, ch. 7, in the context of bootstrap resampling
+for time-series data).
+
+## Limits of detection
+
+The example uses a separate calibration experiment for the same sensor: a
+linear sweep of concentrations with measured currents.
+
+```{r calib}
+set.seed(303)
+conc <- seq(0, 10, length.out = 20)
+resp <- 0.5 + 2.0 * conc + rnorm(length(conc), sd = 0.25)
+cal <- lm(resp ~ conc)
+```
+
+The Currie (1968) critical-value approach gives a single-point LOD based on
+controlling the false-positive and false-negative rates. The classical
+`3 * sigma / slope` rule corresponds to `alpha = beta = 0.00135`
+(one-sided `z = 3`). The Hubaux-Vos (1970) prediction-interval approach
+solves a fixed-point equation for the concentration at which the lower
+prediction bound on the response at that concentration equals the upper
+prediction bound at zero concentration. It is more conservative than
+Currie when the calibration sample size is small because it accounts for
+the calibration uncertainty itself.
+
+```{r lod}
+robust_lod(cal, method = "currie")
+robust_lod(cal, method = "hubaux_vos")
+```
+
+Both methods assume the calibration is linear in the relevant range and
+that the noise is approximately Gaussian. If the calibration is
+nonlinear near zero, the LOD is unreliable. If the noise is
+heteroscedastic, the function detects this (a lowess fit of `|r|` on `x`
+whose max-to-min ratio exceeds 2) and recomputes the LOD using a local
+sigma at the LOD estimate. The Monte Carlo CI on the LOD simulates from
+the asymptotic distribution of `(\hat\alpha, \hat\beta, \hat\sigma)` and
+recomputes the LOD for each simulation; for small calibration samples
+this underestimates the true uncertainty, and the analyst should report it as a
+lower bound.
+
+The documentation does not recommend the `blank_sd` method as a default. It uses the
+IUPAC `3 * sigma / slope` form with no calibration-based standard error;
+use it only when the analyst has a small number of explicit blank measurements
+and no usable calibration.
+
+## What to take away
+
+For electrochemical work: subtract the baseline with ALS, fit peaks with
+`weighted_peak_fit()`, correct drift with reference standards (not the
+running-median fallback), and report a Currie or Hubaux-Vos LOD with a
+Monte Carlo CI. Do not claim that drift-corrected measurements are
+independent; they are not. If the downstream test assumes independence
+and the original noise was correlated, the drift correction will not save
+the analyst.
+
+## Measured Caltech electrochemistry data
+
+Soedarmadji and Gregoire (2021) provide the plate 3540 electrochemistry
+analysis dataset at [CaltechDATA](https://doi.org/10.25989/198p-1x22).
+The packaged table contains derived diagnostics from 29 CA2 and 29 CV3
+current traces. Material sample identifiers denote distinct materials;
+they do not establish independent replicates of a treatment. Non-finite
+current/time rows are counted explicitly before exclusion.
+
+```{r caltech-measured-data}
+caltech <- read.csv(system.file(
+  "extdata", "caltech-current-summary.csv", package = "crossStatR"))
+aggregate(cbind(input_rows, excluded_rows, observations) ~ analysis,
+          data = caltech, FUN = sum)
+head(caltech[c("analysis", "sample", "mean_photocurrent_uA",
+               "slope_uA_per_s", "difference_noise_uA")])
+```
+
+The local workflow checked 348 numerical results across 58 curves and
+2,975 retained observations. Means, SDs, OLS coefficients, and successive
+difference SDs were compared with base R. Smoothing checks required finite
+output of the expected length. These checks establish numerical agreement
+for the measured inputs, rather than validation of a physical model.
+The difference SD also contains genuine signal changes and is not an
+independent estimate of instrumental noise.
+
+Source processing and checks are reproducible with `scripts/validate_caltech.R`.
+The test data is taken from <https://doi.org/10.25989/198p-1x22>. Attribution:
+Soedarmadji, E., and Gregoire, J. (2021). *Materials Experiment and Analysis
+Database: Electrochemistry analysis, Electrochemistry measurements, Material
+library with V,Ca,Ar,O on plate(s) 3540*. CaltechDATA, v1.
+<https://doi.org/10.25989/198p-1x22>.
+
+## References
+
+- Currie, L. A. (1968). Limits for qualitative detection and quantitative determination. Application to radiochemistry. Analytical Chemistry, 40, 586-593. [Source](https://doi.org/10.1021/ac60259a007).
+
+- Davison, A. C. and Hinkley, D. V. (1997). Bootstrap Methods and their Application. Cambridge University Press. [Source](https://doi.org/10.1017/CBO9780511802843).
+
+- Eilers, P. H. C. and Boelens, H. F. M. (2005). Baseline Correction with Asymmetric Least Squares Smoothing. Unpublished manuscript. [Source](https://www.researchgate.net/publication/228961729_Baseline_Correction_with_Asymmetric_Least_Squares_Smoothing).

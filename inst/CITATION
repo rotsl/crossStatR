@@ -1,0 +1,8 @@
+bibentry(
+  bibtype = "Manual",
+  title = "crossStatR: Scientific Statistics for Biological, Electrochemical, Optical and Physics Experiments",
+  author = person("Rohan", "R"),
+  year = 2026,
+  note = "R package version 0.99.1",
+  url = "https://github.com/rotsl/crossStatR"
+)

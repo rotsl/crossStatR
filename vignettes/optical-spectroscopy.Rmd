@@ -1,0 +1,252 @@
+---
+title: "Optical Spectroscopy Statistics"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Optical Spectroscopy Statistics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6, fig.height = 4,
+  fig.align = "center"
+)
+set.seed(17)
+```
+
+```{r load}
+library(crossStatR)
+library(ggplot2)
+```
+
+## Development validation
+
+This vignette accompanies development version 0.99.1.
+The benchmark covers selected configurations, and the validation study uses
+100 datasets per metric with 99 resampling draws. These small simulations
+provide diagnostics; they do not establish general statistical calibration.
+The local study observed 24% peak false positives, 10% peak detection,
+74.9% transfer interval coverage, and 43% drift interval coverage in the
+tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+
+## Why optical spectroscopy needs its own statistics
+
+Optical spectra are functions: a measured absorbance (or intensity,
+reflectance, Raman shift) at each of hundreds or thousands of wavelengths.
+The natural temptation is to run a pointwise t-test at each wavelength
+and report the wavelengths where the p-value drops below 0.05. That
+temptation is wrong. With 1000 wavelength bins and independent Gaussian
+noise the analyst expects 50 false-positive wavelengths under the null at
+`alpha = 0.05`. With positive autocorrelation across wavelengths the
+false positives cluster, and the analysis produces spurious "regions of difference".
+
+This vignette walks through three crossStatR functions that are designed
+for optical data: `adaptive_smoothing()` for noise reduction with peak
+preservation, `peak_evidence()` for assessing whether a candidate peak is
+real, and `signal_difference_regions()` for identifying spectral regions
+where two groups differ while controlling the family-wise error rate.
+
+## Simulated UV-Vis-like spectra
+
+The example simulates two groups of 12 replicate spectra each across 400-800 nm.
+The "treated" group has an extra Gaussian absorption peak centred at
+540 nm that is absent from the control group. Noise is correlated across
+neighbouring wavelengths to mimic realistic spectrometer behaviour.
+
+```{r sim-spectra}
+set.seed(404)
+wavelengths <- seq(400, 800, length.out = 200)
+n_per_group  <- 12
+
+make_curve <- function(group) {
+  base <- 0.05 + 0.0006 * (wavelengths - 400)            # gentle slope
+  peak1 <- 0.6 * exp(-(wavelengths - 460)^2 / (2 * 15^2)) # shared peak
+  peak2 <- if (group == "treated")
+    0.8 * exp(-(wavelengths - 540)^2 / (2 * 12^2)) else 0
+  # Correlated noise: AR(1) across wavelengths
+  e <- as.numeric(stats::filter(rnorm(length(wavelengths), sd = 0.06),
+                                filter = 0.6, method = "recursive"))
+  base + peak1 + peak2 + e
+}
+
+ctrl <- t(replicate(n_per_group, make_curve("control")))
+trt  <- t(replicate(n_per_group, make_curve("treated")))
+spec_df <- data.frame(
+  wl = rep(wavelengths, times = 2 * n_per_group),
+  absorbance = c(as.vector(t(ctrl)), as.vector(t(trt))),
+  group = rep(c("control", "treated"), each = n_per_group * length(wavelengths)),
+  rep   = factor(rep(rep(seq_len(n_per_group), each = length(wavelengths)), 2))
+)
+
+ggplot(spec_df, aes(x = wl, y = absorbance, group = interaction(group, rep),
+                    colour = group)) +
+  geom_line(alpha = 0.5) +
+  labs(x = "Wavelength (nm)", y = "Absorbance") +
+  theme_bw()
+```
+
+## Adaptive smoothing with peak preservation
+
+Aggressive smoothing reduces variance but biases peak heights downward
+and peak widths upward. The bias propagates: a smoothed peak height is a
+downward-biased estimate of the true peak height. `adaptive_smoothing()`
+makes this tradeoff explicit by minimising leave-one-out PRESS over a
+candidate grid of Savitzky-Golay windows and vetoing any window that
+shrinks the global maximum by more than 5%.
+
+```{r smoothing}
+example_curve <- trt[1, ]
+sm <- adaptive_smoothing(wavelengths, example_curve,
+                         method = "sgolay", poly_order = 3L)
+print(sm)
+```
+
+The reported `peak_height_loss` is the fraction of the global maximum
+lost to smoothing. If it exceeds 0.05, the peak-preservation constraint
+forced the function to pick a smaller window than PRESS alone would
+suggest. Inspect `press` and `peak_height_loss` together; if both are
+large the analyst has a noisy signal with a sharp peak, and the analyst should consider
+fitting a model to the raw data instead.
+
+```{r plot-smoothing, fig.cap = "Raw and smoothed spectra. The smoothed curve follows the raw data closely at the peak, at the cost of slightly more residual noise."}
+plot_df <- data.frame(
+  wl = rep(wavelengths, 2),
+  absorbance = c(example_curve, sm$smoothed),
+  what = rep(c("raw", "smoothed"), each = length(wavelengths))
+)
+ggplot(plot_df, aes(x = wl, y = absorbance, colour = what)) +
+  geom_line() + labs(x = "Wavelength (nm)", y = "Absorbance") +
+  theme_bw()
+```
+
+## Peak evidence: is the candidate peak real?
+
+Given a candidate peak location, `peak_evidence()` reports a Gaussian
+likelihood-style score and a resampling tail fraction. The score and
+resampling procedure are exploratory: local simulations found poor null
+calibration and low detection rates. Neither output establishes a calibrated
+false-positive probability for a detected peak.
+
+```{r peak-evidence}
+pe <- peak_evidence(wavelengths, example_curve, method = "lr",
+                    n_perm = 500, seed = 1)
+head(pe$peaks, 5)
+```
+
+The score assumes a known noise SD and uses the baseline-subtracted
+candidate amplitude. Resampling retains a smoothing spline, shuffles its
+residuals, and compares a different local-contrast statistic with that
+amplitude. The candidate set is not re-detected within each resample.
+The resulting tail fraction requires methodological validation before
+confirmatory use. Overlapping peaks also require a joint signal model.
+
+## Simultaneous confidence bands for curve differences
+
+To ask *where* the two groups differ while controlling the family-wise
+error rate, use `signal_difference_regions()`. The function builds
+pointwise t-statistics `\hat d(x) / s(x)` and replaces the pointwise
+critical value with the `1 - alpha` quantile of the maximum absolute
+t-statistic under the null (Westfall and Young, 1993). The null distribution is
+estimated by a Westfall-Young permutation scheme: group labels are
+exchanged between replicate curves and the max-t statistic is recomputed
+for each permutation.
+
+```{r sdr}
+sdr <- signal_difference_regions(
+  x = wavelengths,
+  y1 = ctrl, y2 = trt,
+  conf_level = 0.95,
+  method = "max-t",
+  n_perm = 500,
+  seed = 1
+)
+print(sdr)
+```
+
+The reported `regions` data frame lists the contiguous wavelength
+intervals where the simultaneous band excludes zero. The function also
+returns the per-wavelength difference, the standard error, and the band
+endpoints so the analyst can plot the band itself.
+
+```{r plot-sdr, fig.cap = "Pointwise mean difference (black), 95% simultaneous confidence band (grey ribbon), and the identified significant region (shaded). Pointwise 95% intervals would include zero across most of the spectrum, falsely narrowing the apparent difference."}
+band_df <- data.frame(
+  wl = sdr$x_grid,
+  diff = sdr$diff,
+  low = sdr$band_low,
+  high = sdr$band_high
+)
+# Mark identified regions
+regions_df <- sdr$regions
+if (!is.null(regions_df) && nrow(regions_df) > 0) {
+  regions_df$ymin <- min(band_df$low)
+  regions_df$ymax <- max(band_df$high)
+}
+p <- ggplot(band_df, aes(x = wl, y = diff)) +
+  geom_ribbon(aes(ymin = low, ymax = high), alpha = 0.25) +
+  geom_line(colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Wavelength (nm)", y = "Mean difference (treated - control)") +
+  theme_bw()
+if (!is.null(regions_df) && nrow(regions_df) > 0) {
+  p <- p + geom_rect(data = regions_df, alpha = 0.15,
+                     aes(xmin = start, xmax = end, ymin = ymin, ymax = ymax),
+                     inherit.aes = FALSE, fill = "tomato")
+}
+p
+```
+
+## What simultaneous bands provide that pointwise tests do not
+
+A pointwise 95% interval at each wavelength has 95% coverage *at that
+wavelength*. It does not have 95% coverage for the *whole curve*. With
+200 wavelength bins and independent Gaussian noise the probability that
+at least one pointwise interval excludes zero under the null is roughly
+`1 - 0.95^200 \approx 1`. The family-wise error rate collapses.
+
+A simultaneous 95% band controls the probability that *any* point on the
+band fails to cover the true difference, across the whole curve. The analyst can
+report "the two groups differ in the region 525-555 nm" with the family-
+wise error rate at the nominal level. Pointwise tests support no
+such claim; they describe each wavelength in isolation.
+
+The cost is power. A simultaneous band is wider than the corresponding
+pointwise interval at every wavelength. The Westfall-Young permutation
+adjustment recovers some of that power by accounting for the correlation
+structure across wavelengths, which the Bonferroni adjustment does
+not. With `n_perm = 0` the function falls back to a Bonferroni-adjusted
+critical value, which is conservative; with `n_perm > 0` it uses the
+permutation distribution, which is more powerful when neighbouring
+wavelengths are correlated (as they almost always are in optical
+spectroscopy).
+
+## When the method fails
+
+The permutation exchangeability assumption requires the two groups to
+have the same noise structure. If the treated group has variance twice
+that of the control, the permutation null distribution is wrong and the
+band is too narrow. Inspect the group SDs across wavelengths and, if
+they differ substantially, use `n_perm = 0` (Bonferroni) instead, or
+apply a variance-stabilising transform before calling the function.
+
+Region boundaries are limited by the grid resolution; sub-grid
+localisation requires interpolation and is not done here. For very large
+grids (>1000 points) the Bonferroni adjustment becomes extremely
+conservative; permutation is strongly recommended.
+
+## What to take away
+
+For optical spectroscopy: smooth only when the analyst must, fit models on raw
+data when the analyst can, and never report pointwise tests across a spectrum
+without simultaneous-band control. `signal_difference_regions()` gives
+the band and the regions; `peak_evidence()` indicates whether a
+candidate peak is real; `adaptive_smoothing()` documents the bias it
+introduces.
+
+## References
+
+- Savitzky, A. and Golay, M. J. E. (1964). Smoothing and Differentiation of Data by Simplified Least Squares Procedures. Analytical Chemistry, 36, 1627-1639. [Source](https://doi.org/10.1021/ac60214a047).
+
+- Westfall, P. H. and Young, S. S. (1993). Resampling-Based Multiple Testing: Examples and Methods for p-Value Adjustment. Wiley. [Source](https://www.wiley.com/en-gb/Resampling-Based+Multiple+Testing%3A+Examples+and+Methods+for+p-Value+Adjustment-p-9780471557616).

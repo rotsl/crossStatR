@@ -1,0 +1,24 @@
+.DS_Store
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+*.Rcheck/
+*.tar.gz
+*.tgz
+*.zip
+vignettes/*.html
+vignettes/*_files/
+vignettes/*_cache/
+inst/doc/
+.Renviron
+coverage.xml
+cobertura.xml
+
+# Internal development records are kept outside the repository.
+METHOD_RESEARCH.md
+STATISTICAL_SPECIFICATIONS.md
+DEPENDENCY_REVIEW.md
+CITATION_REVIEW.md
+FINAL_DEVELOPMENT_REPORT.md

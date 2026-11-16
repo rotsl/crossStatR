@@ -1,0 +1,234 @@
+---
+title: "Biological Experiment Statistics"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Biological Experiment Statistics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6, fig.height = 4,
+  fig.align = "center"
+)
+set.seed(7)
+```
+
+```{r load}
+library(crossStatR)
+library(ggplot2)
+```
+
+## Development validation
+
+This vignette accompanies development version 0.99.1.
+The benchmark covers selected configurations, and the validation study uses
+100 datasets per metric with 99 resampling draws. These small simulations
+provide diagnostics; they do not establish general statistical calibration.
+The local study observed 24% peak false positives, 10% peak detection,
+74.9% transfer interval coverage, and 43% drift interval coverage in the
+tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+
+## The pseudo-replication problem
+
+Most biological measurements are taken on a small number of biological units
+(animals, cell cultures, donor samples), each measured several times. The
+several-per-unit measurements are technical replicates. They share instrument
+noise and sample-handling artefacts with the other measurements on the same
+unit, so they are correlated. Treating them as independent inflates the apparent
+sample size and shrinks the standard error by roughly a factor of
+`\sqrt{k}`, where `k` is the number of technical replicates per biological unit.
+
+This is the standard pseudo-replication failure described by Vaux, Fidler and
+Cumming (2012). It is the single most common statistical mistake in biological
+experimental data reported in experimental practice. crossStatR makes the correct workflow the
+default: pass a `bio_rep` identifier (and optionally a `tech_rep` identifier)
+to `sci_describe()`, and the function averages the technical replicates within
+each biological unit before computing summary statistics or fitting tests.
+
+The example uses a small dose-response example that resembles
+an enzyme-kinetics assay. The example simulates three biological replicates per dose
+condition, with two technical replicates per biological unit. The two technical
+replicates share a biological-unit-level random effect so they are positively
+correlated.
+
+## Simulating a dose-response experiment
+
+```{r sim-data}
+set.seed(101)
+doses <- c(0, 1, 5, 25)              # µM, nominal
+n_bio <- 6                            # biological replicates per dose
+n_tech <- 2                           # technical replicates per bio unit
+mu <- c(2.0, 2.6, 3.4, 4.0)           # true means per dose
+sigma_bio <- 0.25                     # between-bio SD
+sigma_tech <- 0.07                    # within-bio, between-tech SD
+
+rows <- list()
+for (d in seq_along(doses)) {
+  for (b in seq_len(n_bio)) {
+    bio_effect <- rnorm(1, mean = mu[d], sd = sigma_bio)
+    for (t in seq_len(n_tech)) {
+      rows[[length(rows) + 1L]] <- data.frame(
+        dose = doses[d], dose_f = factor(doses[d]),
+        bio = paste0("d", d, "_b", b),
+        tech = t,
+        y = bio_effect + rnorm(1, sd = sigma_tech)
+      )
+    }
+  }
+}
+df <- do.call(rbind, rows)
+head(df, 4)
+```
+
+## Descriptive statistics at the right level
+
+The correct call averages technical replicates within each biological unit
+before computing per-dose means and standard errors:
+
+```{r describe}
+desc <- sci_describe(df$y, group = df$dose_f,
+                    bio_rep = df$bio, tech_rep = df$tech)
+print(desc)
+```
+
+The reported `n` per dose is 6, the number of biological replicates. The
+standard error is the between-bio-unit standard error. Compare this with
+the naive call that ignores the replicate structure:
+
+```{r describe-naive}
+naive <- sci_describe(df$y, group = df$dose_f)
+print(naive)
+```
+
+The naive call reports `n = 12` per dose. The standard error is roughly
+half of the correct value, because it confuses within-bio noise with
+between-bio variation. Any p-value computed downstream from the naive summary
+will be far too small.
+
+The documentation does not recommend reporting the naive summary in a paper, even as a
+supplementary table. The temptation to compare the two summaries and pick the
+one that supports the hypothesis is exactly the kind of analysis-decision
+sensitivity that `experiment_fragility()` is designed to expose (see the
+*Advanced Uncertainty Attribution* vignette).
+
+## Plotting the data honestly
+
+A honest plot shows each biological replicate as a point (after averaging its
+technical replicates) and overlays the group mean. Plotting all 24 raw points
+as if they were independent is the visual analogue of pseudo-replication.
+
+```{r plot-data, fig.cap = "Dose-response with biological replicates shown as points (technical replicates pre-averaged). Black diamonds are group means; error bars are 95% CIs on the mean."}
+bio_means <- aggregate(y ~ dose_f + bio, data = df, FUN = mean)
+group_summary <- desc$summary
+group_summary$dose_f <- factor(group_summary$group)
+
+ggplot(bio_means, aes(x = dose_f, y = y)) +
+  geom_jitter(width = 0.08, alpha = 0.6, size = 2) +
+  geom_pointrange(data = group_summary,
+                  aes(y = mean, ymin = mean_ci_low, ymax = mean_ci_high),
+                  colour = "black", size = 0.6, fatten = 2.5,
+                  shape = 18) +
+  labs(x = "Dose (µM)", y = "Response (a.u.)",
+       title = "Dose-response: 6 biological replicates per dose") +
+  theme_bw()
+```
+
+## Two-group comparison
+
+To compare two dose levels the example calls `sci_compare()`. The default test is
+Welch's t, which the example prefers over Student's t in essentially all experimental
+settings because the equal-variance assumption rarely holds. If the
+distributions are visibly non-Gaussian (small `n`, heavy tails), use the
+permutation test instead; it does not require a Gaussian null and it controls
+Type I error under exchangeability.
+
+```{r compare}
+sub <- df[df$dose %in% c(1, 5), ]
+bio_means2 <- aggregate(y ~ dose_f + bio, data = sub, FUN = mean)
+x <- bio_means2$y[bio_means2$dose_f == "1"]
+y <- bio_means2$y[bio_means2$dose_f == "5"]
+sci_compare(x, y, test = "welch")
+```
+
+The example deliberately computes the comparison on the per-bio-unit means rather than
+on the raw 12-row subset. The two-level averaging (technical replicates
+within bio units, then compare bio means) is what justifies the Welch test's
+independence assumption.
+
+## ANOVA across all doses
+
+A one-way ANOVA across all four doses asks whether the means differ
+anywhere. The example uses the default `aov` path with Tukey HSD post-hoc and
+report the effect-size estimates.
+
+```{r anova}
+bio_means_all <- aggregate(y ~ dose_f + bio, data = df, FUN = mean)
+fit <- sci_anova(y ~ dose_f, data = bio_means_all,
+                posthoc = "tukey")
+print(fit)
+```
+
+The `effect_sizes` table reports eta-squared, partial eta-squared, and
+omega-squared. The example prefers omega-squared for one-way designs because it is
+less biased upwards in small samples (Kelley, 1935; Carroll and Nordholm,
+1975). The Levene's test p-value is reported so the analyst can decide whether to
+refit with `welch = TRUE`; if the variances look equal across groups the
+classic F-test is fine, and if they do not, refit:
+
+```{r anova-welch}
+fit_w <- sci_anova(y ~ dose_f, data = bio_means_all, welch = TRUE)
+print(fit_w)
+```
+
+## Effect size with confidence interval
+
+A p-value alone is uninformative about the magnitude of the difference. The example
+recommends reporting a standardised effect size alongside the test. For the
+two-group comparison above:
+
+```{r effect-size}
+sci_effect_size(x, y, type = "cohens_d")
+sci_effect_size(x, y, type = "hedges_g")
+```
+
+The Hedges' `g` applies a small-sample bias correction to Cohen's `d`. For
+`n = 6` per group, the correction is roughly 6%, which is large enough to
+matter. The example prefers `g` for small samples and `d` for sample sizes above
+roughly 20 per group.
+
+## When the design is more complex
+
+If the biological units are themselves clustered (mice within a cage, cells
+within a passage, donor samples within a batch), the simple average-then-test
+workflow above is no longer adequate because it ignores the cluster-level
+correlation. Use `replicate_decompose()` instead. It fits a linear mixed
+model with `lme4::lmer` and reports variance components for each level of
+replication.
+
+If the analyst wants to attribute variance across several experimental stages
+(sampling, instrument noise, calibration, drift), see the
+*Advanced Uncertainty Attribution* vignette. The Category C functions
+`uncertainty_origin()` and `drift_uncertainty()` are designed for that
+question.
+
+## What to take away
+
+Three things. First, average technical replicates within biological units
+before any inferential statistics; `sci_describe()` does this for the analyst when
+the analyst supplies `bio_rep` and `tech_rep`. Second, default to Welch's t unless the analyst
+have a stated reason to use Student's, and use the permutation test when
+the Gaussian assumption is doubtful. Third, report effect sizes with
+confidence intervals, not just p-values, and prefer Hedges' `g` for small
+samples.
+
+## References
+
+- Carroll, R. M. and Nordholm, L. A. (1975). Sampling characteristics of Kelley's epsilon-squared and Hays' omega-squared. Educational and Psychological Measurement, 35, 541-554. [Source](https://doi.org/10.1177/001316447503500304).
+
+- Kelley, T. L. (1935). An Unbiased Correlation Ratio Measure. Proceedings of the National Academy of Sciences, 21, 554-559. [Source](https://doi.org/10.1073/pnas.21.9.554).
+
+- Vaux, D. L., Fidler, F. and Cumming, G. (2012). Replicates and repeats—what is the difference and is it significant? The EMBO Reports, 13, 291-296. [Source](https://doi.org/10.1038/embor.2012.36).

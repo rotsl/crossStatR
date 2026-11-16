@@ -1,0 +1,80 @@
+url: https://rotsl.github.io/crossStatR/
+development:
+  mode: devel
+
+template:
+  bootstrap: 5
+  bootswatch: flatly
+
+home:
+  title: crossStatR
+  description: Scientific statistics for biological, electrochemical, optical and physics experiments.
+
+reference:
+  - title: Category A: Core statistics
+    desc: Descriptive statistics, hypothesis testing, regression, ANOVA, power, and bootstrap. These functions are the foundation of the package and are deliberately conservative in their defaults.
+    contents:
+      - sci_describe
+      - sci_compare
+      - sci_anova
+      - sci_regression
+      - sci_correlation
+      - sci_normality
+      - sci_outliers
+      - sci_power
+      - sci_effect_size
+      - sci_bootstrap
+
+  - title: Category B: Domain methods
+    desc: Methods for working with experimental signals, calibration curves, kinetic models, replicate structure, and detection limits. These extend or wrap established analytical and chemometric techniques.
+    contents:
+      - adaptive_baseline
+      - adaptive_smoothing
+      - batch_effect_quantify
+      - calibration_compare
+      - curve_similarity
+      - drift_correct_stat
+      - kinetic_model_compare
+      - noise_characterize
+      - parameter_uncertainty
+      - replicate_decompose
+      - robust_lod
+      - spectral_change_test
+      - timepoint_optimize
+      - weighted_peak_fit
+
+  - title: Category C: Advanced diagnostics
+    desc: Experimental diagnostics with method descriptions, source references, and limitations.
+    contents:
+      - signal_difference_regions
+      - peak_evidence
+      - calibration_transfer_risk
+      - kinetic_discrimination
+      - experiment_fragility
+      - drift_uncertainty
+      - detection_reliability
+      - uncertainty_origin
+
+  - title: S3 methods
+    desc: Generic methods for crossStatR result objects.
+    contents:
+      - tidy.crossstatr_result
+      - summary.crossstatr_result
+
+articles:
+  - title: Vignettes
+    navbar: ~
+    contents:
+      - advanced-uncertainty
+      - biological-statistics
+      - electrochemical-statistics
+      - experimental-physics
+      - introduction
+      - optical-spectroscopy
+
+repo:
+  url:
+    home: https://github.com/rotsl/crossStatR
+    source: https://github.com/rotsl/crossStatR
+    issue: https://github.com/rotsl/crossStatR
+    user: https://github.com/rotsl/crossStatR

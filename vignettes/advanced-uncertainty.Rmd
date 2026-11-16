@@ -1,0 +1,287 @@
+---
+title: "Advanced Uncertainty Attribution"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Advanced Uncertainty Attribution}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6, fig.height = 4,
+  fig.align = "center"
+)
+set.seed(29)
+```
+
+```{r load}
+library(crossStatR)
+library(ggplot2)
+```
+
+## Development validation
+
+This vignette accompanies development version 0.99.1.
+The benchmark covers selected configurations, and the validation study uses
+100 datasets per metric with 99 resampling draws. These small simulations
+provide diagnostics; they do not establish general statistical calibration.
+The local study observed 24% peak false positives, 10% peak detection,
+74.9% transfer interval coverage, and 43% drift interval coverage in the
+tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+
+## What Category C is for
+
+The eight Category C functions in crossStatR answer a specific kind
+of question: *where does measurement uncertainty come from, and
+how does it propagate through the analysis pipeline?* A single-point
+LOD is not enough. A drift-corrected mean is not enough. The full
+answer requires attributing variance to stages (sampling, instrument
+noise, calibration, drift, model selection), quantifying how robust
+the final result is to defensible analysis decisions, and producing
+concentration-dependent reliability curves rather than one number.
+
+This vignette walks through the five Category C methods considered
+most useful in practice: `drift_uncertainty()`,
+`calibration_transfer_risk()`, `detection_reliability()`,
+`experiment_fragility()`, and `uncertainty_origin()`. The example uses a
+synthetic electrochemical sensor case throughout. These are
+diagnostic tools that quantify how much the analyst should trust a reported
+number, not confirmatory tests.
+
+## The synthetic case
+
+The example simulates a sensor that produces a linear response to a known analyte
+concentration, with exponential drift in the baseline. The example uses 30
+calibration points spread over concentrations 0.1 to 10 µM and 60
+"unknown" measurements taken over a 10-hour window with drift. The
+true calibration is `y = 2 + 3 * x`, and the true drift is
+`0.5 * (1 - exp(-0.3 * t))` with `t` in hours.
+
+```{r synthetic-case}
+set.seed(606)
+# Calibration data
+x_cal <- seq(0.1, 10, length.out = 30)
+y_cal <- 2 + 3 * x_cal + rnorm(length(x_cal), sd = 0.25)
+source_cal <- lm(y_cal ~ x_cal)
+
+# Unknown measurements with drift
+n_unk <- 60
+t_unk <- seq(0, 10, length.out = n_unk)
+drift_true <- 0.5 * (1 - exp(-0.3 * t_unk))
+# True concentrations of unknowns (uniform on [0.5, 5])
+x_true_unk <- runif(n_unk, 0.5, 5)
+y_unk <- 2 + 3 * x_true_unk + drift_true + rnorm(n_unk, sd = 0.25)
+
+cal_df <- data.frame(x = x_cal, y = y_cal)
+unk_df <- data.frame(x = x_true_unk, y = y_unk, t = t_unk)
+```
+
+## drift_uncertainty: how much variance is drift?
+
+`drift_uncertainty()` decomposes the total measurement variance into a
+component attributable to drift and a residual noise component. Drift
+is modelled as a smooth function of time, fit jointly with calibration
+parameters when concentrations are supplied. The drift variance is the
+variance of the fitted drift function evaluated at the observed times;
+the noise variance is the residual variance of the joint fit. The
+fraction of variance attributed to drift is
+`f_drift = sigma^2_drift / (sigma^2_drift + sigma^2_epsilon)`.
+
+```{r drift-uncert}
+dru <- drift_uncertainty(y = y_unk, time = t_unk,
+                        conc = x_true_unk,
+                        drift_model = "exponential",
+                        n_boot = 200, seed = 1)
+print(dru)
+```
+
+The function reports the drift variance fraction with a bootstrap
+percentile CI. Read it as: of the total variance in the unknown
+measurements, roughly the reported fraction is attributable to drift
+under the assumed exponential model. The bootstrap CI assumes the
+drift model is correctly specified.
+
+When is this appropriate? When the analyst has a smooth drift process and
+known concentrations. When is it not? When drift and concentration
+are confounded. The function warns if `cor(time, conc)` exceeds
+0.5 in absolute value; in that case the drift estimate is biased.
+
+## calibration_transfer_risk: what happens if the analyst skips recalibration?
+
+Suppose the analyst built the sensor calibration on instrument A and now wants to
+use it on instrument B without full recalibration. The example measures a few
+shared transfer samples and apply a simple offset correction.
+`calibration_transfer_risk()` quantifies the prediction error, an out-of-
+distribution flag for unknown samples, and an uncertainty interval that
+combines source calibration uncertainty, transfer-correction uncertainty,
+and target measurement noise via a parametric bootstrap.
+
+```{r transfer-risk}
+# Simulate a target instrument with offset + small slope change
+y_target <- 2.4 + 2.85 * x_cal + rnorm(length(x_cal), sd = 0.25)
+target_df <- data.frame(x = x_cal, y = y_target)
+ctr <- calibration_transfer_risk(source_cal = source_cal,
+                                 source_data = cal_df,
+                                 target_data = target_df,
+                                 transfer_samples = 6L,
+                                 transfer_model = "slope_offset",
+                                 n_boot = 200, seed = 1)
+print(ctr)
+```
+
+The transfer prediction error (TPE) indicates how far off
+concentration estimates on the target instrument will be, on average.
+The out-of-distribution rate flags samples that do not behave like
+the transfer set (matrix effects, sensor drift, different analyte).
+A transfer is "acceptable" if TPE is below a user-supplied tolerance
+(default: 2x the source calibration standard error) and the OOD rate
+on the evaluation set is below 5%. The documentation does not recommend reporting a
+transferred calibration without this check.
+
+When is this appropriate? When source and target instruments share
+the same chemistry and analyte. When is it not? When the source
+calibration itself is biased, or when the transfer samples are not
+representative of the unknowns.
+
+## detection_reliability: a curve, not a single number
+
+The single-point LOD reduces the entire detection performance of a
+sensor to one concentration. `detection_reliability()` produces the
+full curve: probability of detection (PD), false-positive rate (FPR),
+and false-negative rate (FNR), each as a function of concentration,
+with bootstrap confidence bands. Variance from matrix effects, batch
+effects, or drift can be incorporated via the `extra_sigma2` argument,
+which adds an extra variance contribution to the calibration noise
+variance.
+
+```{r detection-reliability}
+dr <- detection_reliability(calibration = source_cal,
+                             conc_grid = seq(0, 5, length.out = 30),
+                             n_boot = 200, seed = 1)
+print(dr)
+
+# Plot PD/FNR curves
+curves <- dr$curve
+ggplot(curves, aes(x = concentration)) +
+  geom_line(aes(y = pd, colour = "PD")) +
+  geom_line(aes(y = fnr, colour = "FNR")) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "grey50") +
+  labs(x = "Concentration", y = "Probability",
+       colour = NULL) +
+  theme_bw()
+```
+
+The reliability curve shows where the sensor actually works. If
+the PD curve reaches 0.95 only at a concentration above the
+regulatory threshold, the sensor is not adequate for the intended
+use, regardless of what the single-point LOD number says.
+
+When is this appropriate? For analyses of detection
+performance across a range of concentrations. When is it not? When
+the calibration is not linear in the relevant range, or when the
+Gaussian noise assumption is badly wrong.
+
+## experiment_fragility: how robust is the result?
+
+`experiment_fragility()` quantifies how sensitive a reported result is
+to defensible analysis decisions: which replicates to include, how to
+handle outliers, which baseline correction to use, which model to fit,
+and how much measurement uncertainty to inject before the result loses
+significance. It is a sensitivity analysis, not a confirmatory test.
+
+```{r fragility}
+# A simple analysis function: returns the slope of the calibration.
+# experiment_fragility passes a list with a 'data' element.
+analysis_fn <- function(opts) {
+  d <- opts$data
+  fit <- lm(y ~ x, data = d)
+  unname(coef(fit)[2])
+}
+fg <- experiment_fragility(
+  analysis_fn = analysis_fn,
+  data = cal_df,
+  replicates = NULL,
+  outlier_methods = c("none", "iqr", "mad"),
+  measurement_uncertainties = c(0, 0.05, 0.1, 0.2, 0.5),
+  decision_threshold = 3.0,
+  n_boot = 100, seed = 1
+)
+print(fg)
+```
+
+The fragility score is a weighted sum of decision-flip fractions across
+perturbation types. The "noise fragility threshold" is the smallest
+injected-noise SD at which the decision (here, "slope = 3.0") flips.
+The reported `most_influential_decision` indicates which perturbation
+type produces the largest swing in the result.
+
+When is this appropriate? As an exploratory check before committing to
+a result. When is it not? As a confirmatory test. The fragility score
+has no known reference distribution; do not treat it as a p-value. The
+binary fragility index is less informative than the continuous range
+across perturbations.
+
+## uncertainty_origin: Allocation of additive variance
+
+`uncertainty_origin()` allocates the variance of an additive total using
+supplied stage variances and covariances. Each covariance is shared equally
+between the two stages involved. Independent stages reduce to the usual
+additive decomposition. This subset-sum variance game differs from the
+conditional-expectation Shapley effects studied by Owen and Prieur (2017)
+and Song, Nelson and Staum (2016). The function does not estimate the stage
+variances or implement nonlinear propagation. Its `total_ci` is a quantile
+interval for simulated additive errors, rather than a confidence interval
+for a variance component.
+
+```{r uncertainty-origin}
+# The example uses the following variance components from prior analyses:
+stages <- c(
+  sampling         = 0.01,
+  instrument_noise = 0.04,
+  calibration      = 0.02,
+  drift            = as.numeric(dru$sigma2_drift),
+  replicate        = 0.005
+)
+# A few correlations between stages (illustrative)
+correlations <- list(
+  sampling__instrument_noise = 0.1,
+  calibration__drift         = 0.2
+)
+uo <- uncertainty_origin(stages = stages,
+                         correlations = correlations,
+                         n_mc = 1000, seed = 1)
+print(uo)
+```
+
+The output reports each stage's contribution to total variance, with
+the cross-term variance fairly allocated. For independent stages the
+Shapley attribution reduces to the obvious
+`sigma^2_k / sum(sigma^2)`.
+
+When is this appropriate? When the analyst has already estimated the stage
+variances with the other Category B and C functions and want a final
+attribution table. When is it not? When the stage variances are
+themselves noisy estimates, or when the correlations are unknown.
+
+## What these methods are not
+
+The Category C functions are diagnostic tools. Their results depend on model specification, independence assumptions, and the estimated input variances. Residual autocorrelation requires inspection. Small simulation studies cannot establish confidence-interval coverage across experimental settings.
+
+`drift_uncertainty()` separates drift from residual variance when calibration information permits that separation. `calibration_transfer_risk()` assesses a proposed transfer; `detection_reliability()` describes concentration-dependent detection. `experiment_fragility()` checks sensitivity to analysis decisions, and `uncertainty_origin()` allocates variance using the supplied covariance structure.
+
+## References
+
+- Currie, L. A. (1999). Detection and quantification limits: origins and historical overview. Analytica Chimica Acta, 391, 127-134. [Source](https://doi.org/10.1016/S0003-2670(99)00105-1).
+
+- Davison, A. C. and Hinkley, D. V. (1997). Bootstrap Methods and their Application. Cambridge University Press. [Source](https://doi.org/10.1017/CBO9780511802843).
+
+- Owen, A. B. and Prieur, C. (2017). On Shapley Value for Measuring Importance of Dependent Inputs. SIAM/ASA Journal on Uncertainty Quantification, 5, 986-1002. [Source](https://doi.org/10.1137/16M1097717).
+
+- Song, E., Nelson, B. L. and Staum, J. (2016). Shapley effects for global sensitivity analysis: Theory and computation. SIAM/ASA Journal on Uncertainty Quantification, 4, 1060-1083. [Source](https://doi.org/10.1137/15M1048070).
+
+- Steegen, S., Tuerlinckx, F., Gelman, A. and Vanpaemel, W. (2016). Increasing Transparency Through a Multiverse Analysis. Perspectives on Psychological Science, 11, 702-712. [Source](https://doi.org/10.1177/1745691616658637).
+
+- Walsh, M., Srinathan, S. K., McAuley, D. F. et al. (2014). The statistical significance of randomized controlled trial results is frequently fragile: a case for a Fragility Index. Journal of Clinical Epidemiology, 67, 622-628. [Source](https://doi.org/10.1016/j.jclinepi.2013.10.019).

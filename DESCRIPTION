@@ -1,0 +1,51 @@
+Package: crossStatR
+Type: Package
+Title: Scientific Statistics for Biological, Electrochemical, Optical and Physics Experiments
+Version: 0.99.1
+Date: 2026-11-16
+Authors@R: person("Rohan", "R", email = "phonics-tiffs1i@icloud.com",
+    role = c("aut", "cre", "cph"),
+    comment = c(ORCID = "0009-0005-9225-1775"))
+Author: Rohan R [aut, cre, cph]
+Maintainer: Rohan R <phonics-tiffs1i@icloud.com>
+Description: A unified scientific statistics framework for biological
+    experiments, electrochemical measurements, optical and spectroscopic
+    measurements, and experimental physics data. Combines established
+    methods (descriptive statistics, hypothesis testing, regression, ANOVA,
+    power analysis, mixed-effects variance decomposition, calibration,
+    peak fitting) with diagnostic methods for experimental analysis
+    (region-level signal difference testing, peak-evidence
+    assessment, calibration-transfer risk, kinetic discrimination,
+    experimental fragility, drift uncertainty attribution, analytical
+    detection reliability, and stage-wise uncertainty-origin attribution).
+    Every advanced method is documented with its mathematical formulation,
+    assumptions, comparison with established alternatives, and known
+    limitations. The package is intentionally conservative: it does not
+    silently remove observations, does not select hypothesis tests solely
+    on the basis of a normality-test p-value, and distinguishes technical
+    from biological replicates in its variance models.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 3.6.0)
+Imports:
+    stats,
+    utils,
+    MASS,
+    Matrix,
+    lme4 (>= 1.1-28),
+    ggplot2 (>= 3.4.0)
+Suggests:
+    testthat (>= 3.0.0),
+    roxygen2,
+    knitr,
+    rmarkdown,
+    pkgdown,
+    covr,
+    nortest
+URL: https://github.com/rotsl/crossStatR
+BugReports: https://github.com/rotsl/crossStatR
+Roxygen: list(markdown = TRUE)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.1

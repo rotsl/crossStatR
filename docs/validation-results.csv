@@ -1,0 +1,12 @@
+"method","metric","estimate","mcse","target","n"
+"signal_difference_regions","null rejection rate",0.06,0.0238683256575942,"0.05 or lower",100
+"signal_difference_regions","power for uniform shift 0.4",1,0,"high",100
+"peak_evidence","null rejection at prespecified centre",0.24,0.0429234695990928,"0.05 or lower",100
+"peak_evidence","detection at amplitude 1, noise SD 0.1",0.1,0.0301511344577763,"high",100
+"calibration_transfer_risk","mean concentration bias",0.00357941443500092,0.00401205408367422,"0",100
+"calibration_transfer_risk","mean pointwise 95% interval coverage",0.749,0.0165785888175966,"0.95",100
+"drift_uncertainty","drift fraction bias",0.000621275730963192,0.00103652994425086,"0",100
+"drift_uncertainty","95% interval coverage",0.43,0.0497569851956243,"0.95",100
+"detection_reliability","LOD bias",0.0175370528441587,0.00309561388535049,"0",100
+"uncertainty_origin","MC total variance minus analytic variance",0.0130838901893639,0.0188302648943597,"0",100
+"experiment_fragility","strong effect overall fragility",0,0,"low",100

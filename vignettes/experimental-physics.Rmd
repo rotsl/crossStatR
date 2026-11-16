@@ -1,0 +1,246 @@
+---
+title: "Experimental Physics Statistics"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Experimental Physics Statistics}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6, fig.height = 4,
+  fig.align = "center"
+)
+set.seed(23)
+```
+
+```{r load}
+library(crossStatR)
+library(ggplot2)
+```
+
+## Development validation
+
+This vignette accompanies development version 0.99.1.
+The benchmark covers selected configurations, and the validation study uses
+100 datasets per metric with 99 resampling draws. These small simulations
+provide diagnostics; they do not establish general statistical calibration.
+The local study observed 24% peak false positives, 10% peak detection,
+74.9% transfer interval coverage, and 43% drift interval coverage in the
+tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+
+## What is different about physics data
+
+Experimental physics data typically come with explicit measurement
+uncertainties (one sigma per data point), correlated noise, and a
+parametric model the analyst believes in. This is different from
+biological data, where measurement uncertainty is rarely known and the
+model is rarely a tight parametric form. The crossStatR functions in
+this vignette (`sci_regression()`, `kinetic_model_compare()`,
+`noise_characterize()`, `parameter_uncertainty()`) are designed for
+that setting. The example works through a simulated exponential-decay experiment
+with correlated noise and known per-point uncertainties.
+
+## Simulated exponential decay
+
+The example simulates a first-order decay `A * exp(-k * t)` with `A = 5`, `k = 0.3`,
+sampled at 60 time points. Each measurement has a known 1-sigma
+uncertainty that varies with time, and the noise is autocorrelated
+(AR(1) with `rho = 0.4`) so that conventional OLS standard errors will
+be wrong.
+
+```{r sim-decay}
+set.seed(808)
+t <- seq(0, 10, length.out = 60)
+A_true <- 5; k_true <- 0.3
+truth <- A_true * exp(-k_true * t)
+sigma <- 0.05 + 0.02 * t                          # heteroscedastic 1-sigma
+# AR(1) noise correlated in time
+eps <- as.numeric(stats::filter(rnorm(length(t), sd = sigma),
+                                filter = 0.4, method = "recursive"))
+y <- truth + eps
+df <- data.frame(t = t, y = y, sigma = sigma)
+```
+
+```{r plot-decay, fig.cap = "Simulated exponential decay with heteroscedastic 1-sigma error bars. The noise is AR(1)-correlated across time."}
+ggplot(df, aes(x = t, y = y)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = y - sigma, ymax = y + sigma), width = 0.05) +
+  geom_line(aes(y = truth), colour = "tomato", linetype = "dashed") +
+  labs(x = "Time (s)", y = "Signal", colour = NULL) +
+  theme_bw()
+```
+
+## Weighted least squares with measurement uncertainties
+
+When the per-point measurement uncertainty is known, weighted least
+squares with `w_i = 1 / sigma_i^2` is the BLUE. `sci_regression()` with
+`weight_type = "precision"` does exactly this:
+
+```{r wls}
+fit_wls <- sci_regression(y ~ t, data = df,
+                          weights = 1 / df$sigma^2,
+                          weight_type = "precision")
+print(fit_wls)
+```
+
+The fit is a linear model on `t`, not on the decay form, so the
+coefficients are intercept and slope. The point of this section is the
+weighting machinery. For the actual decay form the example needs nonlinear
+regression, which the example fits below.
+
+For the nonlinear decay model `y = A * exp(-k * t)`:
+
+```{r nls}
+fit_nls <- sci_regression(y ~ A * exp(-k * t),
+                          data = df,
+                          nonlinear = TRUE,
+                          start = list(A = 4, k = 0.4))
+print(fit_nls)
+```
+
+The standard errors reported by `nls` assume independent noise. With the
+AR(1) noise they will be too small, and the confidence intervals will
+under-cover. The example addresses this below with `parameter_uncertainty()`.
+
+## Characterising the noise
+
+`noise_characterize()` decomposes the signal into a smooth trend (a
+polynomial of degree `degree`) and a residual series, then reports the
+residual standard deviation, the autocorrelation at lags 1 through 10, a
+heteroscedasticity test, a periodogram, and signal-dependent noise
+bins. The example uses the difference method here, which is appropriate when the
+signal is smooth relative to the sampling rate.
+
+```{r noise}
+nc <- noise_characterize(t, y, method = "residual", degree = 4L)
+print(nc)
+```
+
+The autocorrelation reported at lag 1 should be near `0.4`, which is the
+AR(1) coefficient used in the simulation. If it exceeds `2 / sqrt(n)` (about 0.26 here)
+the independence assumption is questionable, and any inferential
+procedure that assumes independent residuals will give misleading
+standard errors.
+
+## Model comparison: first-order vs. biexponential
+
+Real decay data are often ambiguous between a single first-order decay
+and a biexponential. `kinetic_model_compare()` fits both, reports AIC,
+BIC, RSS, parameter estimates with CIs, and an identifiability
+diagnostic based on the condition number of the sensitivity matrix.
+
+```{r kinetic}
+kmc <- kinetic_model_compare(t, y)
+print(kmc)
+```
+
+The best model by AIC is the first-order decay here, which is the truth.
+But AIC deltas below 2 should be read as "models are essentially
+indistinguishable", not as "the simpler model is correct". With sparse
+data the biexponential will fit nearly as well as the first-order decay
+by setting one of its amplitudes near zero, and the condition number of
+the biexponential's sensitivity matrix will be large. The example does not perform
+a likelihood-ratio test automatically because detecting nesting from a
+black-box function is not reliable; if the analyst knows the nesting, compute the
+LRT manually from the reported RSS values.
+
+## Parameter uncertainty: delta method vs. Monte Carlo vs. bootstrap
+
+The decay constant `k` is the parameter of interest. Its CI from `nls`
+assumes independent Gaussian noise. The example compares three uncertainty
+propagation methods via `parameter_uncertainty()`: the delta method
+(linearisation, fast, asymptotically exact), Monte Carlo from the
+parameter distribution (captures nonlinearity, assumes the parameter
+estimate is approximately Gaussian), and a nonparametric bootstrap
+(refits on resampled data, makes the fewest distributional assumptions).
+
+```{r param-uncert}
+# Extract the nls fit and its covariance
+nls_fit <- fit_nls$model
+params <- stats::coef(nls_fit)
+covmat  <- stats::vcov(nls_fit)
+g <- function(p) p[2]    # extract k
+
+# Delta method
+r_delta <- parameter_uncertainty(params, covmat, g, method = "delta")
+print(r_delta)
+
+# Monte Carlo
+r_mc <- parameter_uncertainty(params, covmat, g, method = "monte_carlo",
+                              n_sim = 1000, seed = 1)
+print(r_mc)
+
+# Bootstrap (refits on resampled (t, y, sigma) rows)
+refit_fn <- function(d) {
+  fit <- try(stats::nls(y ~ A * exp(-k * t), data = d,
+                        start = list(A = 4, k = 0.4)),
+             silent = TRUE)
+  if (inherits(fit, "try-error")) return(rep(NA_real_, 2))
+  stats::coef(fit)
+}
+r_boot <- parameter_uncertainty(params, covmat, g, method = "bootstrap",
+                                n_sim = 200, seed = 1,
+                                original_data = list(data = df, refit = refit_fn))
+print(r_boot)
+```
+
+The bootstrap interval is wider than the delta-method interval here
+because the AR(1) correlation in the noise is absorbed into the
+bootstrap resampling distribution. The example uses the bootstrap interval
+more than the delta-method interval for this dataset, because the
+delta method's independence assumption is violated.
+
+For highly nonlinear `g(theta)` the delta method can be severely biased;
+always compare against Monte Carlo. The Monte Carlo CI assumes the
+parameter estimate is approximately Gaussian; for small samples this is
+optimistic. The bootstrap requires the original data and a working
+refit function, and it does not currently report the refit-failure rate.
+
+## How smoothing biases downstream inference
+
+Aggressive smoothing before fitting the decay model shrinks the apparent
+amplitude and biases the rate constant. To see this, smooth the raw data
+with `adaptive_smoothing()` and refit the nonlinear model:
+
+```{r smoothing-bias}
+sm <- adaptive_smoothing(t, y, method = "spline")
+df_smooth <- data.frame(t = t, y = sm$smoothed)
+fit_smooth <- try(stats::nls(y ~ A * exp(-k * t), data = df_smooth,
+                             start = list(A = 4, k = 0.4)),
+                  silent = TRUE)
+if (!inherits(fit_smooth, "try-error")) {
+  cat("Smoothed fit: A =", round(coef(fit_smooth)[1], 3),
+      " k =", round(coef(fit_smooth)[2], 3), "\n")
+}
+cat("True: A =", A_true, " k =", k_true, "\n")
+```
+
+The fitted `k` from the smoothed data is biased relative to the truth,
+and the standard error from `nls` is too small because smoothing
+introduces correlations that the `nls` asymptotic variance does not
+account for. The documentation recommends fitting models directly on the raw noisy
+data whenever possible, and letting the likelihood handle the noise.
+Smooth only for visualisation, not for inference.
+
+## What to take away
+
+For experimental physics data: supply per-point measurement
+uncertainties to `sci_regression()` with `weight_type = "precision"`.
+Check `noise_characterize()` for autocorrelation; if it is present, do
+not trust the `nls` asymptotic standard errors and use the bootstrap
+via `parameter_uncertainty()`. Compare competing kinetic models with
+`kinetic_model_compare()` but read small AIC deltas as
+non-identifiability, not as support for the simpler model. Do not smooth
+before fitting; the bias is real and propagates.
+
+## References
+
+- Seber, G. A. F. and Wild, C. J. (1989). Nonlinear Regression. Wiley. [Source](https://doi.org/10.1002/0471725315).
+
+- Oehlert, G. W. (1992). A Note on the Delta Method. The American Statistician, 46, 27-29. [Source](https://doi.org/10.1080/00031305.1992.10475842).
+
+- Box, G. E. P., Jenkins, G. M. and Reinsel, G. C. (2008). Time Series Analysis: Forecasting and Control. 4th ed. Wiley. [Source](https://doi.org/10.1002/9781118619193).

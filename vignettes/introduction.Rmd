@@ -1,0 +1,183 @@
+---
+title: "crossStatR: An Introduction"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{crossStatR: An Introduction}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6, fig.height = 4,
+  fig.align = "center"
+)
+set.seed(42)
+```
+
+```{r load}
+library(crossStatR)
+library(ggplot2)
+```
+
+## Development validation
+
+This vignette accompanies development version 0.99.1.
+The benchmark covers selected configurations, and the validation study uses
+100 datasets per metric with 99 resampling draws. These small simulations
+provide diagnostics; they do not establish general statistical calibration.
+The local study observed 24% peak false positives, 10% peak detection,
+74.9% transfer interval coverage, and 43% drift interval coverage in the
+tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+
+## What crossStatR is for
+
+crossStatR is a statistics toolkit for bench scientists who work with
+quantitative experimental data: enzyme kinetics, dose-response curves,
+cyclic voltammetry, UV-Vis and Raman spectra, calibration curves,
+exponential decay experiments. The package collects the methods
+bench scientists reach for repeatedly, with three commitments that guide its design.
+
+The package is conservative by default. It does not silently remove
+observations, it does not pick a hypothesis test on the basis of a
+normality-test p-value, and it distinguishes biological from
+technical replicates in its variance models. Pre-testing for normality
+and switching tests on the result inflates Type I error (Rochon,
+Gondan and Kieser, 2012); pseudo-replication produces confidence
+intervals that are far too narrow (Vaux, Fidler and Cumming, 2012).
+crossStatR avoids both by construction.
+
+The package separates biological and technical variation. When the analyst supplies
+`sci_describe()` which column identifies biological replicates and which
+identifies technical replicates, the function averages technical
+replicates within each biological unit *before* computing summary
+statistics. The reported `n` then refers to biological replicates.
+
+The package documents its own limitations. Every function carries a
+Limitations section in its help page, and the Category C methods (the
+advanced uncertainty-attribution tools) are explicit about when their
+assumptions break.
+
+## Installation
+
+crossStatR is on GitHub. Install it with `remotes`:
+
+```{r install, eval = FALSE}
+install.packages("remotes")
+remotes::install_github("rotsl/crossStatR")
+```
+
+The package depends on `stats`, `MASS`, `Matrix`, `lme4`,
+and `ggplot2` (all on CRAN). `nortest` is suggested for
+Anderson-Darling normality testing but is not required.
+
+## A quick example
+
+Suppose the analyst has a small dose-response dataset with biological
+replicates and two technical replicates per biological unit. The
+honest analysis averages the technical replicates within each
+biological unit first.
+
+```{r quickstart}
+set.seed(1)
+df <- data.frame(
+  y = rnorm(60, mean = rep(c(8, 10, 12), each = 20)),
+  dose = rep(c("low", "mid", "high"), each = 20),
+  bio = rep(1:6, each = 10),
+  tech = rep(1:10, times = 6)
+)
+desc <- sci_describe(df$y, group = df$dose,
+                     bio_rep = df$bio, tech_rep = df$tech)
+print(desc)
+```
+
+The reported `n` per dose is the number of biological replicates after
+collapsing the technical replicates. Compare with the naive call that
+ignores the replicate structure:
+
+```{r naive}
+naive <- sci_describe(df$y, group = df$dose)
+print(naive)
+```
+
+The naive call reports `n = 20` per group, which is misleading. The
+standard errors are too small by roughly a factor of `\sqrt{2}` because
+the within-bio correlation has been ignored. This is the standard
+pseudo-replication failure mode and the reason `sci_describe()` asks
+for the `bio_rep` argument.
+
+A two-group comparison uses `sci_compare()` with the test the analyst can
+defend a priori. The default is Welch's t; the documentation recommends Welch over
+Student in essentially all experimental settings because Student's
+pooled-variance assumption rarely holds for real measurements and the
+Welch loss of power is small (Ruxton, 2006).
+
+```{r compare}
+x <- rnorm(12, mean = 10)
+y <- rnorm(12, mean = 11)
+sci_compare(x, y, test = "welch")
+```
+
+## Function catalogue
+
+crossStatR ships 32 functions across three categories. See the
+individual help pages for the mathematical details.
+
+| Category | Function | Purpose |
+|----------|----------|---------|
+| A | `sci_describe` | Descriptive stats with bio/tech replicate separation |
+| A | `sci_normality` | Shapiro-Wilk or Anderson-Darling with caveats |
+| A | `sci_outliers` | IQR / MAD / z-score / robust-z flagging (no removal) |
+| A | `sci_compare` | Welch / Student / permutation / Wilcoxon two-sample tests |
+| A | `sci_anova` | ANOVA with effect sizes, Welch option, Tukey HSD |
+| A | `sci_regression` | OLS / WLS / robust / nonlinear with measurement weights |
+| A | `sci_correlation` | Pearson / Spearman / Kendall with Fisher-z CIs |
+| A | `sci_bootstrap` | Nonparametric / parametric / cluster / stratified bootstrap |
+| A | `sci_power` | Power and sample size with optional simulation check |
+| A | `sci_effect_size` | Cohen's d, Hedges' g, paired d_z, r, partial eta-squared |
+| B | `adaptive_baseline` | Asymmetric least squares or lowess baseline |
+| B | `weighted_peak_fit` | Multi-peak NLS with Gaussian / Lorentzian / pseudo-Voigt |
+| B | `adaptive_smoothing` | Savitzky-Golay / spline / lowess with PRESS window choice |
+| B | `replicate_decompose` | Variance components via `lme4::lmer` REML |
+| B | `drift_correct_stat` | Linear / polynomial / exponential drift with delta-method SE |
+| B | `robust_lod` | Currie / blank-SD / Hubaux-Vos LOD with Monte Carlo CI |
+| B | `calibration_compare` | ANCOVA comparison of two calibration curves |
+| B | `curve_similarity` | L2 / L1 / DTW / correlation curve distance with CI |
+| B | `kinetic_model_compare` | AIC/BIC comparison of candidate kinetic models |
+| B | `spectral_change_test` | Hotelling T^2 / PERMANOVA / pointwise t for spectra |
+| B | `noise_characterize` | Noise SD, ACF, heteroscedasticity, PSD, signal-dependence |
+| B | `parameter_uncertainty` | Delta method / Monte Carlo / bootstrap propagation |
+| B | `timepoint_optimize` | D / A / C / discrimination-optimal sampling times |
+| B | `batch_effect_quantify` | LMM or fixed-effect batch variance decomposition |
+| C | `signal_difference_regions` | Simultaneous confidence bands for curve differences |
+| C | `peak_evidence` | Likelihood-ratio peak evidence with permutation null |
+| C | `calibration_transfer_risk` | Transfer prediction error and OOD detection |
+| C | `kinetic_discrimination` | Pre-experimental model discrimination probability |
+| C | `experiment_fragility` | Sensitivity of results to analysis decisions |
+| C | `drift_uncertainty` | Variance attribution to drift via bootstrap |
+| C | `detection_reliability` | Concentration-dependent PD / FPR / FNR curves |
+| C | `uncertainty_origin` | Shapley-style stage-wise uncertainty attribution |
+
+Category A covers standard inferential and descriptive statistics,
+wrapped with conservative defaults, effect-size reporting, and
+bio/tech replicate handling. Category B contains domain-specific
+signal-processing and calibration tools that overlap with packages
+like `signal`, `pracma`, `chemCal`, and `driftR` but are unified under
+the crossStatR calling convention. Category C contains eight diagnostic methods for signal comparison, calibration transfer, kinetic discrimination, fragility, detection, and uncertainty attribution. Their underlying statistical concepts overlap with established methods; no general claim of originality is made.
+
+## Where to go next
+
+Domain vignettes: *Biological Experiment Statistics*,
+*Electrochemical Measurement Statistics*, *Optical Spectroscopy
+Statistics*, *Experimental Physics Statistics*, *Advanced Uncertainty
+Attribution*.
+
+## References
+
+- Rochon, J., Gondan, M. and Kieser, M. (2012). To test or not to test: Preliminary assessment of normality when comparing two independent samples. BMC Medical Research Methodology, 12, 81. [Source](https://doi.org/10.1186/1471-2288-12-81).
+
+- Ruxton, G. D. (2006). The unequal variance t-test is an underused alternative to Student's t-test and the Mann–Whitney U test. Behavioral Ecology, 17, 688-690. [Source](https://doi.org/10.1093/beheco/ark016).
+
+- Vaux, D. L., Fidler, F. and Cumming, G. (2012). Replicates and repeats—what is the difference and is it significant? The EMBO Reports, 13, 291-296. [Source](https://doi.org/10.1038/embor.2012.36).
