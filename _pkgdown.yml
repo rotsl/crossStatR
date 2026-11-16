@@ -11,7 +11,7 @@ home:
   description: Scientific statistics for biological, electrochemical, optical and physics experiments.
 
 reference:
-  - title: Category A: Core statistics
+  - title: "Category A: Core statistics"
     desc: Descriptive statistics, hypothesis testing, regression, ANOVA, power, and bootstrap. These functions are the foundation of the package and are deliberately conservative in their defaults.
     contents:
       - sci_describe
@@ -25,7 +25,7 @@ reference:
       - sci_effect_size
       - sci_bootstrap
 
-  - title: Category B: Domain methods
+  - title: "Category B: Domain methods"
     desc: Methods for working with experimental signals, calibration curves, kinetic models, replicate structure, and detection limits. These extend or wrap established analytical and chemometric techniques.
     contents:
       - adaptive_baseline
@@ -43,7 +43,7 @@ reference:
       - timepoint_optimize
       - weighted_peak_fit
 
-  - title: Category C: Advanced diagnostics
+  - title: "Category C: Advanced diagnostics"
     desc: Experimental diagnostics with method descriptions, source references, and limitations.
     contents:
       - signal_difference_regions
