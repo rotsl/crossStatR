@@ -64,7 +64,7 @@ k <- kinetic_discrimination(list(exponential=m1,hyperbolic=m2),list(c(A=1,k=0.2)
 saveRDS(k,"/tmp/crossstatr-kinetic.rds")
 r <- do.call(rbind,rows)
 write.csv(r,"docs/validation-results.csv",row.names=FALSE)
-lines <- c("# Validation report","","Local run: 2026-11-16. Package version: 0.99.1 (development).",paste("Environment:",R.version.string,"on",R.version$platform,"."),"",
+lines <- c("# Validation report","",paste0("Local run: 2026-11-16. Package version: ", read.dcf("DESCRIPTION")[1, "Version"], " (development)."),paste("Environment:",R.version.string,"on",R.version$platform,"."),"",
 "The script `scripts/validate.R` runs 100 independent synthetic datasets per listed metric. Dataset seeds are 20261117 through 20261216; resampling seeds are the dataset indices. Intervals use 99 bootstrap draws and permutation tests use 99 permutations. MCSE is the sample standard deviation of the per-dataset metric divided by the square root of 100. Coverage averaged across concentrations is summarised at the dataset level. Zero observed events do not establish a zero underlying event probability (a rough 95% upper bound is 3/100).",
 "", "| Method | Metric | Estimate | MCSE | Reference | Datasets |","|---|---|---:|---:|---|---:|")
 for(i in seq_len(nrow(r))) lines <- c(lines,sprintf("| %s | %s | %.5f | %.5f | %s | %d |",r$method[i],r$metric[i],r$estimate[i],r$mcse[i],r$target[i],r$n[i]))

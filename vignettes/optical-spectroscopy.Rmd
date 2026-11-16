@@ -24,7 +24,7 @@ library(ggplot2)
 
 ## Development validation
 
-This vignette accompanies development version 0.99.1.
+This vignette accompanies development version 0.99.2.
 The benchmark covers selected configurations, and the validation study uses
 100 datasets per metric with 99 resampling draws. These small simulations
 provide diagnostics; they do not establish general statistical calibration.

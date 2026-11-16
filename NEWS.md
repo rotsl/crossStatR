@@ -1,3 +1,7 @@
+# crossStatR 0.99.2
+
+- Updated R-universe installation documentation.
+
 # crossStatR 0.99.1
 
 Initial public development version. This is a pre-release: the API may change before 1.0.0. The largest changes are expected in the Category C methods (signal-difference regions, peak evidence, calibration transfer risk, kinetic discrimination, experiment fragility, drift uncertainty, detection reliability, and uncertainty-origin attribution), where the interface is still settling. Version pinning supports reproducible analyses.

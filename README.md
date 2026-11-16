@@ -4,13 +4,25 @@
 
 `crossStatR` is an R package of statistics for experimental science. It supports biological assays, electrochemical measurements, optical and spectroscopic signals, and physics experiments. The package combines established methods (descriptive statistics, t-tests, regression, ANOVA, power analysis) with experimental diagnostics (region-level signal-difference testing, peak-evidence assessment, calibration-transfer risk, kinetic discrimination, experimental fragility, drift-attributed uncertainty, analytical detection-reliability curves, and stage-wise uncertainty-origin attribution).
 
-This is a development version (`0.99.1`). The API may change before 1.0.0.
+This is a development version (`0.99.2`). The API may change before 1.0.0.
 
 Local simulation diagnostics found poor peak-test calibration and under-coverage of transfer and drift intervals in the tested scenarios. These methods remain exploratory. Results and reproducible scripts are documented in [the validation report](docs/VALIDATION_REPORT.md).
 
 ## Installation
 
-From GitHub, using `remotes`:
+From [R-universe](https://rotsl.r-universe.dev/crossStatR):
+
+```r
+install.packages(
+  "crossStatR",
+  repos = c(
+    rotsl = "https://rotsl.r-universe.dev",
+    CRAN = "https://cloud.r-project.org"
+  )
+)
+```
+
+Alternatively, from GitHub using `remotes`:
 
 ```r
 install.packages("remotes")
@@ -22,7 +34,7 @@ Then verify it loads:
 ```r
 library(crossStatR)
 packageVersion("crossStatR")
-#> [1] '0.99.1'
+#> [1] '0.99.2'
 ```
 
 ## Function catalogue
@@ -182,7 +194,7 @@ print(fr)
 
 The development version can be cited as follows:
 
-> Rohan R (2026). crossStatR: Scientific Statistics for Biological, Electrochemical, Optical and Physics Experiments. R package version 0.99.1. https://github.com/rotsl/crossStatR
+> Rohan R (2026). crossStatR: Scientific Statistics for Biological, Electrochemical, Optical and Physics Experiments. R package version 0.99.2. https://github.com/rotsl/crossStatR
 
 In R:
 

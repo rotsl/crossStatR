@@ -1,6 +1,6 @@
 # Methods and limitations
 
-Version 0.99.1 is a development version. The table describes the implemented procedures. The primary sources provide background; package-specific adaptations and exploratory diagnostics require separate validation. Numerical results are reported in [the validation report](VALIDATION_REPORT.md).
+Version 0.99.2 is a development version. The table describes the implemented procedures. The primary sources provide background; package-specific adaptations and exploratory diagnostics require separate validation. Numerical results are reported in [the validation report](VALIDATION_REPORT.md).
 
 | Function | Implemented method and limits | Sources |
 |---|---|---|

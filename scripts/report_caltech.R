@@ -10,7 +10,7 @@ append_section <- function(file, heading, lines) {
  writeLines(c(old,heading,"",lines),file)
 }
 counts <- aggregate(cbind(input_rows,excluded_rows,observations)~analysis,r,sum)
-validation <- c("Local measured-data run: 2026-11-16. Package version: 0.99.1 (development).", "", citation,"",
+validation <- c(paste0("Local measured-data run: 2026-11-16. Package version: ", read.dcf("DESCRIPTION")[1, "Version"], " (development)."), "", citation,"",
  "The supplied archive contains processed measurements. The run used all 29 CA2 and 29 CV3 light/dark current-difference tables. The test data is taken from <https://doi.org/10.25989/198p-1x22>. Basenames and input checksums are recorded in `data-raw/caltech-input-manifest.csv`; `scripts/validate_caltech.R` reproduces the checks and derived summaries.","",
  "| Analysis | Input rows | Excluded rows | Retained rows |","|---|---:|---:|---:|")
 for(i in seq_len(nrow(counts))) validation <- c(validation,sprintf("| %s | %d | %d | %d |",c("CA2","CV3")[counts$analysis[i]],counts$input_rows[i],counts$excluded_rows[i],counts$observations[i]))

@@ -24,7 +24,7 @@ library(ggplot2)
 
 ## Development validation
 
-This vignette accompanies development version 0.99.1.
+This vignette accompanies development version 0.99.2.
 The benchmark covers selected configurations, and the validation study uses
 100 datasets per metric with 99 resampling draws. These small simulations
 provide diagnostics; they do not establish general statistical calibration.
@@ -62,9 +62,22 @@ assumptions break.
 
 ## Installation
 
-crossStatR is on GitHub. Install it with `remotes`:
+The development version can be installed from
+[R-universe](https://rotsl.r-universe.dev/crossStatR):
 
-```{r install, eval = FALSE}
+```{r install-runiverse, eval = FALSE}
+install.packages(
+  "crossStatR",
+  repos = c(
+    rotsl = "https://rotsl.r-universe.dev",
+    CRAN = "https://cloud.r-project.org"
+  )
+)
+```
+
+Alternatively, GitHub installation uses `remotes`:
+
+```{r install-github, eval = FALSE}
 install.packages("remotes")
 remotes::install_github("rotsl/crossStatR")
 ```

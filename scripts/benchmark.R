@@ -25,7 +25,7 @@ for (n in c(100L, 500L, 1000L)) {
 }
 r <- do.call(rbind, rows)
 write.csv(r, "docs/benchmark-results.csv", row.names=FALSE)
-lines <- c("# Benchmark report", "", "Local run: 2026-11-16. Package version: 0.99.1 (development).",
+lines <- c("# Benchmark report", "", paste0("Local run: 2026-11-16. Package version: ", read.dcf("DESCRIPTION")[1, "Version"], " (development)."),
  paste("Environment:", R.version.string, "on", R.version$platform, "."),
  "", "The script `scripts/benchmark.R` measures elapsed seconds after one warm-up call, with five repetitions per case. Synthetic inputs use seed 20261116. Curve tests use eight replicates per group and 99 permutations; curve similarity uses 50 bootstrap draws. Grid size is the number of points per curve. Input construction inside the signal-region case is included in its timing.",
  "", "| Method | Points | Median (s) | Minimum (s) | Maximum (s) |", "|---|---:|---:|---:|---:|")
