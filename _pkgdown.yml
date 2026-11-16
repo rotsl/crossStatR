@@ -1,6 +1,7 @@
 url: https://rotsl.github.io/crossStatR/
+destination: _site
 development:
-  mode: devel
+  mode: unreleased
 
 template:
   bootstrap: 5
