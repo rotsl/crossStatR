@@ -16,8 +16,9 @@
 #'   evaluate the reliability curve. If NULL, defaults to 50 points
 #'   spanning 0 to the upper calibration concentration.
 #' @param decision_threshold the response threshold above which a sample
-#'   is called "detected". If NULL, defaults to the upper 95% prediction
-#'   bound of the blank (the IUPAC decision limit).
+#'   is called "detected". If NULL, a one-sided prediction limit at
+#'   `conf_level` is used for supplied blanks; otherwise the intercept plus
+#'   `qnorm(conf_level)` times the effective noise SD is used.
 #' @param conf_level confidence level for the reliability curves.
 #' @param n_boot number of bootstrap replicates for uncertainty bands
 #'   (default 300).
@@ -61,8 +62,10 @@
 #'   these as additional variance contributions via `extra_sigma2`.
 #'
 #'   Bootstrap CIs on PD/FNR are obtained by sampling calibration
-#'   coefficients from their MVN distribution and recomputing the
-#'   curves.
+#'   coefficients from their MVN distribution, varying residual noise, and
+#'   resampling supplied blank measurements when the threshold is estimated.
+#'   Percentile bands and `lod_ci` are returned. Additional variance supplied
+#'   through `extra_sigma2` is held fixed.
 #'
 #' @section Interpretation:
 #'
@@ -71,6 +74,11 @@
 #'   noise model; Currie (1999) supplies the analytical detection framework.
 #'
 #' @section Limitations:
+#'
+#'   - Only estimable positive-slope linear calibrations are supported.
+#'   - Bands are percentile approximations; no BCa correction is applied.
+#'     Small bootstrap counts give unstable tail quantiles. A fixed supplied
+#'     threshold is held constant across bootstrap draws.
 #'
 #'   - The Gaussian noise assumption must hold. Heavy-tailed noise (e.g.
 #'     from sporadic contamination) will inflate FPR beyond the nominal
@@ -134,6 +142,14 @@ detection_reliability <- function(calibration, blank_data = NULL,
          call. = FALSE)
   }
 
+  if (length(beta) != 2L || any(!is.finite(beta)) || beta[2L] <= 0 || df <= 0) {
+    stop("Detection reliability requires an estimable positive-slope linear calibration.", call. = FALSE)
+  }
+  if (!is.numeric(extra_sigma2) || length(extra_sigma2) != 1L ||
+      !is.finite(extra_sigma2) || extra_sigma2 < 0) {
+    stop("'extra_sigma2' must be a finite non-negative variance.", call. = FALSE)
+  }
+  if (!is.null(blank_data)) .assert_numeric_vector(blank_data, "blank_data", min_length = 2L)
   sigma_eff <- sqrt(sigma^2 + extra_sigma2)
 
   # Decision threshold: upper 95% prediction bound of the blank
@@ -142,11 +158,11 @@ detection_reliability <- function(calibration, blank_data = NULL,
       m_blank <- mean(blank_data)
       s_blank <- stats::sd(blank_data)
       n_b <- length(blank_data)
-      tcrit <- stats::qt(1 - (1 - conf_level) / 2, df = n_b - 1)
+      tcrit <- stats::qt(1 - (1 - conf_level), df = n_b - 1)
       L_C <- m_blank + tcrit * s_blank * sqrt(1 + 1 / n_b)
     } else {
       # Calibration-based: y at x=0 is just the intercept
-      zc <- stats::qnorm(1 - (1 - conf_level) / 2)
+      zc <- stats::qnorm(1 - (1 - conf_level))
       L_C <- beta[1L] + zc * sigma_eff
     }
   } else {
@@ -171,18 +187,32 @@ detection_reliability <- function(calibration, blank_data = NULL,
   .set_seed(seed)
   boot_pd <- matrix(NA_real_, nrow = n_boot, ncol = length(conc_grid))
   boot_fpr <- numeric(n_boot)
+  boot_lod <- numeric(n_boot)
   for (b in seq_len(n_boot)) {
     b_beta <- MASS::mvrnorm(1L, mu = beta, Sigma = Vbeta)
     # Optionally vary sigma_eff via chi-square draw
-    b_sigma <- sigma_eff * sqrt(stats::rchisq(1L, df = df) / df)
+    b_sigma <- sqrt(sigma^2 * stats::rchisq(1L, df = df) / df + extra_sigma2)
+    if (!is.null(blank_data) && is.null(decision_threshold)) {
+      b_blank <- sample(blank_data, replace = TRUE)
+      b_m_b <- mean(b_blank)
+      b_s_b <- stats::sd(b_blank)
+      b_tcrit <- stats::qt(conf_level, df = n_b - 1L)
+      b_LC <- b_m_b + b_tcrit * b_s_b * sqrt(1 + 1 / n_b)
+    } else {
+      b_LC <- L_C  # use supplied/decision threshold; bootstrap calibration only
+    }
     b_mu <- b_beta[1L] + b_beta[2L] * conc_grid
-    boot_pd[b, ] <- 1 - stats::pnorm((L_C - b_mu) / b_sigma)
-    boot_fpr[b] <- 1 - stats::pnorm((L_C - b_beta[1L]) / b_sigma)
+    boot_pd[b, ] <- 1 - stats::pnorm((b_LC - b_mu) / b_sigma)
+    boot_fpr[b]  <- 1 - stats::pnorm((b_LC - b_beta[1L]) / b_sigma)
+    boot_lod[b]  <- (b_LC + stats::qnorm(0.95) * b_sigma - b_beta[1L]) / b_beta[2L]
   }
   alpha <- 1 - conf_level
-  pd_ci_low  <- apply(boot_pd, 2L, stats::quantile, probs = alpha / 2)
-  pd_ci_high <- apply(boot_pd, 2L, stats::quantile, probs = 1 - alpha / 2)
-  fpr_ci <- stats::quantile(boot_fpr, c(alpha / 2, 1 - alpha / 2))
+  pd_ci_low  <- apply(boot_pd, 2L, stats::quantile, probs = alpha / 2,
+                     na.rm = TRUE)
+  pd_ci_high <- apply(boot_pd, 2L, stats::quantile, probs = 1 - alpha / 2,
+                     na.rm = TRUE)
+  fpr_ci <- stats::quantile(boot_fpr, c(alpha / 2, 1 - alpha / 2), na.rm = TRUE)
+  lod_ci <- stats::quantile(boot_lod, c(alpha / 2, 1 - alpha / 2), na.rm = TRUE)
 
   # Empirical FPR if blank data supplied
   fpr_emp <- if (!is.null(blank_data)) mean(blank_data > L_C) else NA_real_
@@ -204,6 +234,7 @@ detection_reliability <- function(calibration, blank_data = NULL,
          fpr_ci = fpr_ci,
          fpr_empirical = fpr_emp,
          lod = lod,
+         lod_ci = lod_ci,
          conf_level = conf_level,
          n_boot = n_boot,
          method = "Detection reliability curve",

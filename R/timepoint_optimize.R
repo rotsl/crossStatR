@@ -76,6 +76,12 @@
 #'
 #' @section Limitations:
 #'
+#'   - D-optimal search completes rank first when the starting information
+#'     matrix is singular. Candidates are ordered by rank, then by the product
+#'     of positive squared singular values. A warning identifies this phase;
+#'     the reported final criterion remains the determinant. A final singular
+#'     design produces a warning and has no finite D-optimal criterion.
+#'
 #'   - Local optimality: the criteria are evaluated at the supplied `params`
 #'     only. Bayesian or minimax designs that integrate over a prior on
 #'     `params` are more robust when the assumed parameter values are
@@ -228,18 +234,42 @@ timepoint_optimize <- function(model_func, params, t_range = c(0, 100),
   }
   remaining <- candidates
 
+  n_params <- length(params)
+  design_rank <- function(times) {
+    if (!length(times)) return(0L)
+    qr(sensitivity_at(times, params, model_func))$rank
+  }
+  rank_completion <- criterion == "d_optimal" && design_rank(chosen) < n_params
+  if (rank_completion) {
+    warning("D-optimal search starts with a rank-deficient design; ",
+            "rank completion precedes determinant optimisation.", call. = FALSE)
+  }
   for (k in seq_len(n_extra)) {
     if (length(remaining) == 0L) break
+    use_fallback <- criterion == "d_optimal" && design_rank(chosen) < n_params
     vals <- vapply(remaining, function(t) {
-      criterion_at(c(chosen, t))
+      if (use_fallback) {
+        G <- sensitivity_at(c(chosen, t), params, model_func)
+        singular <- svd(G)$d
+        positive <- singular[singular > max(singular, 1) * 1e-7]
+        if (!length(positive)) return(-Inf)
+        sum(log(positive^2))
+      } else criterion_at(c(chosen, t))
     }, numeric(1L))
     if (all(!is.finite(vals))) break
+    if (use_fallback) {
+      ranks <- vapply(remaining, function(t) design_rank(c(chosen, t)), integer(1L))
+      vals[ranks < max(ranks)] <- -Inf
+    }
     best_idx <- which.max(vals)
     chosen <- c(chosen, remaining[best_idx])
     remaining <- remaining[-best_idx]
   }
   chosen <- sort(unique(chosen))
   criterion_value <- criterion_at(chosen)
+  if (criterion == "d_optimal" && design_rank(chosen) < n_params) {
+    warning("The final design remains rank deficient; more informative times are required.", call. = FALSE)
+  }
 
   if (criterion == "model_discrimination") {
     G_final <- sensitivity_at(chosen, params, model_func)
@@ -266,6 +296,7 @@ timepoint_optimize <- function(model_func, params, t_range = c(0, 100),
          sensitivity_matrix = G_final,
          information_matrix = information_matrix,
          criterion = criterion,
+         rank_completion = rank_completion,
          model_label = model_label,
          fixed_times = fixed_times,
          n_extra = n_extra,

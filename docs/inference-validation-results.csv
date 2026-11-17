@@ -1,0 +1,6 @@
+"method","metric","estimate","mcse","target","n"
+"sci_describe","median 95% interval coverage, normal mean=10 n=30",0.9594,0.00279139505933412,0.95,5000
+"sci_normality","mean excess kurtosis, normal n=100",0.00146673238373516,0.0104130662973073,0,2000
+"sci_bootstrap","BCa 95% mean interval coverage, lognormal n=50",0.916,0.0087761620894911,0.95,1000
+"sci_bootstrap","percentile 95% mean interval coverage, lognormal n=50",0.914,0.00887032596259477,0.95,1000
+"drift_correct_stat","mean pointwise 95% interval coverage with independent standards",0.950333333333333,0.00296716237330274,0.95,500

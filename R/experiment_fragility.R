@@ -140,6 +140,12 @@ experiment_fragility <- function(analysis_fn, data, replicates = NULL,
 
   # Original result
   orig <- analysis_fn(list(data = data))
+  if (!is.numeric(orig) || length(orig) != 1L || !is.finite(orig)) {
+    stop(sprintf(
+      "analysis_fn must return a single finite numeric value. Got %s of length %d.",
+      class(orig)[1L], length(orig)),
+      call. = FALSE)
+  }
   orig_decision <- orig > decision_threshold
 
   # Leave-one-replicate-out

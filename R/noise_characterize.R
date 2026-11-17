@@ -172,7 +172,7 @@ noise_characterize <- function(x, y,
   e_centered <- resids - mean(resids, na.rm = TRUE)
   e_padded <- c(e_centered, rep(0, n_fft - n))
   fft_res <- stats::fft(e_padded)
-  psd_all <- (Mod(fft_res)^2) / n_fft
+  psd_all <- (Mod(fft_res)^2) / n  # normalise by n, not n_fft
   n_pos <- n_fft %/% 2L
   freqs <- seq(0, 1, length.out = n_fft + 1L)[1:n_pos] / dt
   psd_pos <- psd_all[1:n_pos]

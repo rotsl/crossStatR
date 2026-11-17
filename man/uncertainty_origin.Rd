@@ -36,7 +36,7 @@ Details).}
 \item{n_mc}{number of Monte Carlo replicates for the joint
 propagation under non-zero correlations (default 5000).}
 
-\item{conf_level}{confidence level for the final CI.}
+\item{conf_level}{level for error quantiles and Monte Carlo precision intervals.}
 
 \item{seed}{optional integer seed.}
 }
@@ -80,6 +80,12 @@ Monte Carlo draws use a zero-mean multivariate normal distribution
 with the supplied covariance matrix and are summed additively.
 \code{total_ci} contains quantiles of that simulated total, not a
 confidence interval for its variance or its stage allocations.
+\code{total_prediction_interval} is the same interval with an explicit name.
+\code{total_variance_ci} is a chi-square interval for Monte Carlo variance
+precision using \code{n_mc - 1} df. \code{shapley_ci} uses Gaussian
+sample-covariance standard errors for the allocation. These intervals
+describe simulation precision conditional on the supplied covariance,
+not uncertainty in stage variances estimated from experimental data.
 Nonlinear propagation is not implemented. The optional
 \code{model_selection_uncertainty} value is returned separately without
 being added to the simulated total. Draper (1995) discusses model

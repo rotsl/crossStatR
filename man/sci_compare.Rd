@@ -91,6 +91,9 @@ Effect size Cohen's d / Hedges' g is computed as in
 \section{Limitations}{
 
 \itemize{
+\item Standardised-effect intervals are approximate: small samples use a
+Student-t critical value when effect-size df is below 30. Hedges g
+and its SE use the same small-sample correction factor.
 \item The permutation test is exact only when the exchangeability
 assumption holds (typically true for random assignment, not for
 observational data).

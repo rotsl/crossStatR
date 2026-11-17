@@ -73,10 +73,10 @@ where \eqn{S_p} is the pooled within-group covariance. When
 \deqn{F = \frac{n_1 + n_2 - p - 1}{p(n_1 + n_2 - 2)}T^2}
 is referenced to \eqn{F_{p,\,n_1+n_2-p-1}} (Hotelling, 1931).
 
-When \eqn{S_p} is singular (typical when \eqn{p \geq n}), the
-Moore-Penrose inverse (MASS::ginv) is used and the chi-square
-approximation \eqn{T^2 \sim \chi^2_p} is reported; this is liberal in
-small samples and should be supplemented with PERMANOVA.
+When the pooled covariance is singular or the F-transform has
+non-positive denominator df, the statistic is descriptive only.
+A warning and \code{p_value = NA} are returned; \code{method = "permanova"}
+supplies a separate permutation-based comparison.
 
 PERMANOVA pseudo-F (Anderson, 2001). Let \eqn{d_{ij}} be the Euclidean
 distance between rows \code{i} and \code{j} of \code{spectra}. The total sum of
@@ -102,8 +102,8 @@ independence.
 
 \itemize{
 \item The Hotelling F-transform requires \eqn{p < n_1 + n_2 - 1}. For
-wider spectra the method falls back to a chi-square approximation, which is
-anti-conservative; PERMANOVA is the safer choice in this regime.
+wider spectra or singular pooled covariance, no Hotelling p-value is
+returned. PERMANOVA requires its own exchangeability assumptions.
 \item PERMANOVA assumes exchangeability of observations under the null.
 When groups have very different dispersions (not just means) the
 test can be significant even without location differences; see

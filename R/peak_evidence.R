@@ -145,12 +145,16 @@ peak_evidence <- function(x, y, peak_index = NULL, baseline = NULL,
   alpha <- 1 - conf_level
 
   # Compute amplitude, SNR, LR, FPP per peak
+  n_pts <- length(y)
   amps <- vapply(peak_index, function(idx) {
     # Local baseline = min of two side windows
-    lo <- max(1L, idx - 5L); hi <- min(length(y), idx + 5L)
-    side_b <- min(mean(baseline[max(1L, idx - 10L):(idx - 1L)]),
-                  mean(baseline[(idx + 1L):min(length(y), idx + 10L)]))
-    y_bc[idx]  # use baseline-subtracted value
+    left_idx  <- seq.int(max(1L, idx - 10L), max(1L, idx - 1L))
+    right_idx <- seq.int(min(n_pts, idx + 1L), min(n_pts, idx + 10L))
+    side_b_left  <- mean(baseline[left_idx],  na.rm = TRUE)
+    side_b_right <- mean(baseline[right_idx], na.rm = TRUE)
+    side_b <- min(side_b_left, side_b_right)
+    excess <- max(0, side_b - baseline[idx])
+    y_bc[idx] - excess
   }, numeric(1L))
 
   # Bonferroni-corrected SNR threshold

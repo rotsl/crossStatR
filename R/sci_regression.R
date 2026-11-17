@@ -128,10 +128,11 @@ sci_regression <- function(formula, data, weights = NULL,
     smry <- summary(fit)
     cf <- smry$coefficients
     tval <- cf[, 1L] / cf[, 2L]
-    pval <- 2 * stats::pt(-abs(tval), df = fit$df.residual)
+    df_resid <- as.integer(smry$df[2L])
+    pval <- 2 * stats::pt(-abs(tval), df = df_resid)
     ci <- cf[, 1L] + outer(cf[, 2L],
                            stats::qt(c((1-conf_level)/2, 1-(1-conf_level)/2),
-                                     df = fit$df.residual))
+                                     df = df_resid))
     out_coef <- data.frame(
       term = rownames(cf), estimate = cf[, 1L], se = cf[, 2L],
       statistic = tval, p_value = pval,
@@ -166,8 +167,8 @@ sci_regression <- function(formula, data, weights = NULL,
   # Residual diagnostics
   diags <- list(
     n = length(res),
-    df_resid = if (inherits(fit, "lm")) fit$df.residual else
-      summary(fit)$df[2L],
+    df_resid = if (inherits(fit, "rlm")) smry$df[2L] else
+      stats::df.residual(fit),
     rss = sum(res^2),
     rmse = sqrt(mean(res^2)),
     r_squared = if (inherits(fit, "lm")) smry$r.squared else NA_real_,
@@ -209,13 +210,24 @@ sci_regression <- function(formula, data, weights = NULL,
 
 # Breusch-Pagan test for heteroscedasticity (simplified)
 .bptest <- function(formula, data, weights = NULL) {
-  fit <- stats::lm(formula, data = data, weights = weights)
+  if (is.null(weights)) {
+    fit <- stats::lm(formula, data = data)
+  } else {
+    data$.crossstatr_weights <- weights
+    fit <- stats::lm(formula, data = data, weights = .crossstatr_weights)
+  }
   res2 <- stats::resid(fit)^2
-  aux <- stats::lm(res2 ~ stats::fitted(fit))
+  X <- stats::model.matrix(fit)
+  aux <- stats::lm.fit(X, res2)
   n <- length(res2)
-  R2 <- summary(aux)$r.squared
+  rss_aux <- sum(aux$residuals^2)
+  tss_aux <- sum((res2 - mean(res2))^2)
+  if (tss_aux <= 0) return(NA_real_)
+  R2 <- 1 - rss_aux / tss_aux
   stat <- n * R2
-  p <- stats::pchisq(stat, df = 1, lower.tail = FALSE)
+  df_test <- aux$rank - as.integer(attr(stats::terms(fit), "intercept"))
+  if (df_test < 1L) return(NA_real_)
+  p <- stats::pchisq(stat, df = df_test, lower.tail = FALSE)
   p
 }
 

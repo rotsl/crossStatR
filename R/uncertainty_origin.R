@@ -24,7 +24,7 @@
 #'   Details).
 #' @param n_mc number of Monte Carlo replicates for the joint
 #'   propagation under non-zero correlations (default 5000).
-#' @param conf_level confidence level for the final CI.
+#' @param conf_level level for error quantiles and Monte Carlo precision intervals.
 #' @param seed optional integer seed.
 #'
 #' @return A `crossstatr_uncertainty_origin` object.
@@ -56,6 +56,12 @@
 #'   with the supplied covariance matrix and are summed additively.
 #'   `total_ci` contains quantiles of that simulated total, not a
 #'   confidence interval for its variance or its stage allocations.
+#'   `total_prediction_interval` is the same interval with an explicit name.
+#'   `total_variance_ci` is a chi-square interval for Monte Carlo variance
+#'   precision using `n_mc - 1` df. `shapley_ci` uses Gaussian
+#'   sample-covariance standard errors for the allocation. These intervals
+#'   describe simulation precision conditional on the supplied covariance,
+#'   not uncertainty in stage variances estimated from experimental data.
 #'   Nonlinear propagation is not implemented. The optional
 #'   `model_selection_uncertainty` value is returned separately without
 #'   being added to the simulated total. Draper (1995) discusses model
@@ -123,8 +129,10 @@ uncertainty_origin <- function(stages, correlations = NULL,
     stop("'stages' must be a named numeric vector with at least 2 entries.",
          call. = FALSE)
   }
-  if (any(stages < 0)) {
-    stop("All stage variances must be non-negative.", call. = FALSE)
+  .assert_positive_integer(n_mc, "n_mc")
+  if (n_mc < 2L) stop("'n_mc' must be at least 2.", call. = FALSE)
+  if (any(!is.finite(stages)) || any(stages < 0) || sum(stages) == 0) {
+    stop("Stage variances must be finite, non-negative and have a positive sum.", call. = FALSE)
   }
   stage_names <- names(stages)
   if (is.null(stage_names)) stage_names <- paste0("V", seq_along(stages))
@@ -161,6 +169,11 @@ uncertainty_origin <- function(stages, correlations = NULL,
     }
   }
 
+  if (!isSymmetric(Sigma) || any(!is.finite(Sigma)) ||
+      min(eigen(Sigma, symmetric = TRUE, only.values = TRUE)$values) < -1e-10) {
+    stop("The covariance matrix must be finite, symmetric and positive semidefinite.", call. = FALSE)
+  }
+
   # Total variance: trace(Sigma) + 2 * sum off-diagonal / 2 = sum of all entries
   total_var_additive <- sum(diag(Sigma))
   total_var_correlated <- sum(Sigma)
@@ -169,7 +182,7 @@ uncertainty_origin <- function(stages, correlations = NULL,
   # phi_k = sigma_k^2 + sum_{j != k} Cov(k, j)
   # Because each pair (k,j) contributes Cov(k,j) twice (once to phi_k, once to phi_j),
   # sum(phi_k) = sum(diag(Sigma)) + 2 * sum_{k<j} Cov(k,j) = total_var_correlated.
-  shapley <- diag(Sigma) + rowSums(Sigma) - diag(Sigma)
+  shapley <- rowSums(Sigma)
   names(shapley) <- stage_names
 
   # Percentages
@@ -182,21 +195,42 @@ uncertainty_origin <- function(stages, correlations = NULL,
   total_mc <- rowSums(samples)
   total_var_mc <- stats::var(total_mc)
   # MCSE
-  mcse_total <- .mcse_mean(total_mc^2) / (2 * sqrt(total_var_mc))  # rough
+  mcse_total_var <- stats::sd(total_mc^2) / sqrt(n_mc)
 
   alpha <- 1 - conf_level
-  total_ci_mc <- stats::quantile(total_mc,
+  chi_lo <- stats::qchisq(1 - alpha / 2, df = n_mc - 1L)
+  chi_hi <- stats::qchisq(alpha / 2, df = n_mc - 1L)
+  total_variance_ci <- c((n_mc - 1L) * total_var_mc / chi_lo,
+                         (n_mc - 1L) * total_var_mc / chi_hi)
+  total_prediction_interval <- stats::quantile(total_mc,
                                   c(alpha / 2, 1 - alpha / 2))
 
+  # Gaussian sample-covariance precision for row sums of Sigma.
+  shapley_mcse <- sqrt(pmax(diag(Sigma) * total_var_correlated + shapley^2, 0) /
+                         (n_mc - 1L))
+  zcrit <- stats::qnorm(1 - alpha / 2)
+  shapley_ci_low <- shapley - zcrit * shapley_mcse
+  shapley_ci_high <- shapley + zcrit * shapley_mcse
+  shapley_mcse <- sqrt(pmax(stages * total_var_correlated + shapley^2, 0) /
+                         (n_mc - 1L))
+  z <- stats::qnorm(1 - alpha / 2)
+  shapley_ci_low <- shapley - z * shapley_mcse
+  shapley_ci_high <- shapley + z * shapley_mcse
   out <- .crossstatr_result(
     list(stages = stages,
          covariance = Sigma,
          total_variance_additive = total_var_additive,
          total_variance_correlated = total_var_correlated,
          total_variance_mc = total_var_mc,
-         total_variance_mcse = mcse_total,
-         total_ci = total_ci_mc,
+         total_variance_mcse = mcse_total_var,
+         total_variance_ci = total_variance_ci,
+         total_prediction_interval = total_prediction_interval,
+         total_ci = total_prediction_interval,
+         total_ci = total_prediction_interval,
+         interval_scope = "Monte Carlo precision conditional on supplied covariance",
+         shapley_mcse = shapley_mcse,
          shapley_attribution = shapley,
+         shapley_ci = cbind(shapley_ci_low, shapley_ci_high),
          percent_additive = pct_additive,
          percent_shapley = pct_shapley,
          model_selection_uncertainty = model_selection_uncertainty,

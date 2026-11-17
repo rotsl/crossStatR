@@ -39,6 +39,10 @@
 #'
 #' @section Limitations:
 #'
+#'   - Robust z scores divide deviations by the normal-consistent MAD.
+#'     If the MAD is zero, median-valued observations receive zero and
+#'     nonzero deviations receive signed infinity, preserving their flags.
+#'
 #'   - For very small samples (n < 5) the IQR/MAD rules have low power
 #'     and the z-score rule is unstable. Results are returned with a
 #'     `n < 5` warning.
@@ -105,10 +109,13 @@ sci_outliers <- function(x, group = NULL,
     flag_mad <- if ("mad" %in% method)
       abs(xi_f - m) > robust_z_threshold * mad_v else NA
 
-    zsc <- if ("zscore" %in% method)
-      (xi_f - mean(xi_f)) / s else NA
-    rzsc <- if ("robust_z" %in% method)
-      0.6745 * (xi_f - m) / mad_v else NA
+    zsc <- if ("zscore" %in% method) {
+      if (is.finite(s) && s > 0) (xi_f - mean(xi_f)) / s else rep(0, length(xi_f))
+    } else NA
+    rzsc <- if ("robust_z" %in% method) {
+      if (is.finite(mad_v) && mad_v > 0) (xi_f - m) / mad_v
+      else ifelse(xi_f == m, 0, sign(xi_f - m) * Inf)
+    } else NA
 
     z_flag <- if ("zscore" %in% method) abs(zsc) > z_threshold else NA
     rz_flag <- if ("robust_z" %in% method)

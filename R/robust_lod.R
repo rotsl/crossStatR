@@ -93,6 +93,10 @@
 #'
 #' @section Limitations:
 #'
+#'   - Heteroscedastic thresholds use an estimated local noise curve without
+#'     fully propagating uncertainty in that curve. The resulting limits and
+#'     intervals remain approximations.
+#'
 #'   - All three methods assume the calibration is linear in the relevant
 #'     concentration range. If the calibration is nonlinear near zero, the
 #'     LOD is unreliable.

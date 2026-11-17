@@ -129,7 +129,7 @@ NULL
   alpha <- 1 - conf_level
   # Order-statistic-based interval (normal approximation to binomial order-statistic bounds)
   z <- stats::qnorm(1 - alpha / 2)
-  k <- (n - 1) / 2 - z * sqrt(n) / 2
+  k <- (n + 1) / 2 - z * sqrt(n) / 2
   k <- max(1L, floor(k))
   sx <- sort(x)
   lo_idx <- k
@@ -185,7 +185,8 @@ NULL
     d <- (mean(x) - mean(y)) / sp
   }
   if (hedges) {
-    J <- 1 - 3 / (4 * (nx + ny - 2) - 1)
+    df_d <- if (paired) nx - 1L else nx + ny - 2L
+    J <- 1 - 3 / (4 * df_d - 1)
     d <- d * J
   }
   d

@@ -28,8 +28,9 @@ evaluate the reliability curve. If NULL, defaults to 50 points
 spanning 0 to the upper calibration concentration.}
 
 \item{decision_threshold}{the response threshold above which a sample
-is called "detected". If NULL, defaults to the upper 95\% prediction
-bound of the blank (the IUPAC decision limit).}
+is called "detected". If NULL, a one-sided prediction limit at
+\code{conf_level} is used for supplied blanks; otherwise the intercept plus
+\code{qnorm(conf_level)} times the effective noise SD is used.}
 
 \item{conf_level}{confidence level for the reliability curves.}
 
@@ -87,8 +88,10 @@ provided those variance components have been estimated separately
 these as additional variance contributions via \code{extra_sigma2}.
 
 Bootstrap CIs on PD/FNR are obtained by sampling calibration
-coefficients from their MVN distribution and recomputing the
-curves.
+coefficients from their MVN distribution, varying residual noise, and
+resampling supplied blank measurements when the threshold is estimated.
+Percentile bands and \code{lod_ci} are returned. Additional variance supplied
+through \code{extra_sigma2} is held fixed.
 }
 
 \section{Interpretation}{
@@ -102,6 +105,10 @@ noise model; Currie (1999) supplies the analytical detection framework.
 \section{Limitations}{
 
 \itemize{
+\item Only estimable positive-slope linear calibrations are supported.
+\item Bands are percentile approximations; no BCa correction is applied.
+Small bootstrap counts give unstable tail quantiles. A fixed supplied
+threshold is held constant across bootstrap draws.
 \item The Gaussian noise assumption must hold. Heavy-tailed noise (e.g.
 from sporadic contamination) will inflate FPR beyond the nominal
 rate.

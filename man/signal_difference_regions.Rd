@@ -108,6 +108,9 @@ one grid step.
 \section{Limitations}{
 
 \itemize{
+\item The Bonferroni fallback uses a common degrees-of-freedom approximation
+rather than propagating pointwise Welch df. Unequal variances and small
+replicate counts can affect simultaneous coverage.
 \item Assumes replicate curves are independent. For paired designs,
 permute within pairs (not implemented; use paired-test
 infrastructure instead).

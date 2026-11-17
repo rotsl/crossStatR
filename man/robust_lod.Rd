@@ -120,6 +120,9 @@ each simulation, and take the percentile interval.
 \section{Limitations}{
 
 \itemize{
+\item Heteroscedastic thresholds use an estimated local noise curve without
+fully propagating uncertainty in that curve. The resulting limits and
+intervals remain approximations.
 \item All three methods assume the calibration is linear in the relevant
 concentration range. If the calibration is nonlinear near zero, the
 LOD is unreliable.

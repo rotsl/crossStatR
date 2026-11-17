@@ -22,6 +22,9 @@
 #' @param method `"delta"`, `"monte_carlo"`, or `"bootstrap"`.
 #' @param n_sim integer; number of Monte Carlo or bootstrap replicates.
 #' @param conf_level confidence level for the interval.
+#' @param df positive degrees of freedom for delta-method intervals. The
+#'   default `Inf` uses a normal critical value; residual degrees of freedom
+#'   from a fitted model can be supplied for a Student-t approximation.
 #' @param seed optional integer seed.
 #' @param original_data required for `method = "bootstrap"`: a list with
 #'   elements `data` (the original data frame) and `refit` (a function
@@ -50,8 +53,8 @@
 #'   numerically by central finite differences. The variance of
 #'   \eqn{g(\hat{\theta})} is approximated by
 #'   \deqn{\mathrm{Cov}(g(\hat{\theta})) \approx J\,\mathrm{Cov}(\hat{\theta})\,J'.}
-#'   Confidence intervals use a Student-t critical value with `length(params)`
-#'   df, matching the common choice in nonlinear regression software.
+#'   Delta-method intervals use a normal critical value by default. A finite
+#'   `df` requests a Student-t approximation with those degrees of freedom.
 #'
 #'   Monte Carlo: draw \eqn{\theta^{(b)} \sim \mathrm{MVN}(\hat{\theta},
 #'   \hat{\Sigma})} for `b = 1, ..., n_sim`, compute \eqn{g^{(b)} =
@@ -110,7 +113,8 @@ parameter_uncertainty <- function(params, cov, func,
                                     method = c("delta", "monte_carlo",
                                                "bootstrap"),
                                     n_sim = 1000L, conf_level = 0.95,
-                                    seed = NULL, original_data = NULL) {
+                                    seed = NULL, original_data = NULL,
+                                    df = Inf) {
   call <- match.call()
   method <- match.arg(method)
   .assert_numeric_vector(params, "params", min_length = 1L)
@@ -120,6 +124,13 @@ parameter_uncertainty <- function(params, cov, func,
   if (nrow(cov) != length(params) || ncol(cov) != length(params)) {
     stop("'cov' must be a square matrix of size length(params).",
          call. = FALSE)
+  }
+  if (any(!is.finite(cov)) || !isSymmetric(cov) ||
+      min(eigen(cov, symmetric = TRUE, only.values = TRUE)$values) < -1e-10) {
+    stop("'cov' must be finite, symmetric and positive semidefinite.", call. = FALSE)
+  }
+  if (!is.numeric(df) || length(df) != 1L || is.na(df) || df <= 0) {
+    stop("'df' must be positive or Inf.", call. = FALSE)
   }
   if (!is.function(func)) {
     stop("'func' must be a function.", call. = FALSE)
@@ -143,8 +154,11 @@ parameter_uncertainty <- function(params, cov, func,
     # Cov(g) = J Cov(theta) J'
     var_g <- J %*% cov %*% t(J)
     se <- sqrt(pmax(diag(var_g), 0))
-    df <- max(1L, length(params))
-    tcrit <- stats::qt(1 - (1 - conf_level) / 2, df = df)
+    if (is.infinite(df)) {
+      tcrit <- stats::qnorm(1 - (1 - conf_level) / 2)
+    } else {
+      tcrit <- stats::qt(1 - (1 - conf_level) / 2, df = max(1L, df))
+    }
     ci_lo <- est - tcrit * se
     ci_hi <- est + tcrit * se
     out <- list(estimate = est,

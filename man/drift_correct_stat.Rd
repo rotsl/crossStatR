@@ -37,8 +37,9 @@ A \code{crossstatr_drift} object with elements:
 \item{drift_fit}{fitted drift values at each time point.}
 \item{drift_se}{delta-method standard error of the drift fit at
 each time point.}
-\item{correction_ci}{n x 2 matrix giving the CI on the corrected
-signal.}
+\item{correction_ci}{n x 2 approximate pointwise uncertainty interval
+combining drift-estimation error and measurement noise.}
+\item{se_corr, sigma_y}{drift-correction SE and assumed measurement-noise SD.}
 \item{model_summary}{list of model-specific summary statistics
 (coefficients, R^2 where applicable, residual SE).}
 \item{call}{the matched call.}
@@ -102,6 +103,12 @@ for the covariance between the two fitted values:
 \section{Limitations}{
 
 \itemize{
+\item The interval adds measurement-noise variance to drift-correction
+variance and uses a Student-t critical value with drift-fit residual df.
+Reference-standard residual noise is assumed to represent sample noise.
+Without standards, corrected-signal SD supplies a rough noise estimate.
+Dependence between a fitted signal and its correction is not propagated;
+these intervals are approximate and are not confidence bands for a mean.
 \item The drift model assumes the drift is a smooth function of time.
 If the instrument suffers step changes (e.g. a calibration is
 re-applied mid-run), no smooth model will fit well. Inspect the

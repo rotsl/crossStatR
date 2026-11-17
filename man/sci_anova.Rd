@@ -63,6 +63,17 @@ Effect sizes:
 Tukey HSD uses the studentized range distribution.
 }
 
+\section{Limitations}{
+
+\itemize{
+\item Welch effect sizes are descriptive sums-of-squares summaries, not
+heteroscedasticity-corrected inferential estimates. Factorial effects
+use sequential (Type I) sums of squares and depend on term order.
+Welch inference is restricted to one-way models. Tukey post-hoc tests
+are unavailable on that path; a warning accompanies such requests.
+}
+}
+
 \examples{
 df <- data.frame(y = rnorm(60, mean = rep(c(5, 6, 8), each = 20)),
                  g = factor(rep(c("A","B","C"), each = 20)))

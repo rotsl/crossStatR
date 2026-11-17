@@ -1,3 +1,7 @@
+# crossStatR 0.99.3
+
+- Refreshed local validation results, benchmarks, and documentation.
+
 # crossStatR 0.99.2
 
 - Updated R-universe installation documentation.
@@ -18,7 +22,7 @@ Initial public development version. This is a pre-release: the API may change be
 - `sci_regression` - linear, weighted, and robust regression with diagnostics
 - `sci_correlation` - correlation analysis with confidence intervals (Pearson, Spearman, Kendall)
 - `sci_normality` - normality assessment with multiple tests
-- `sci_outliers` - outlier diagnostics (IQR, MAD, Grubbs, Dixon)
+- `sci_outliers` - outlier diagnostics (IQR, MAD, z-score, robust z-score)
 - `sci_power` - power and sample-size calculation for common designs
 - `sci_effect_size` - standardized effect sizes (Cohen's d, Hedges' g) with CIs
 - `sci_bootstrap` - bootstrap resampling with percentile, BCa, and normal CIs

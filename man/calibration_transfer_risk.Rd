@@ -64,7 +64,7 @@ inverting the source calibration:
 where \eqn{\hat\delta} (and the slope correction, if any) are
 estimated from the shared transfer samples via OLS.
 
-\strong{Transfer prediction error (TPE)} is the standard deviation of
+\strong{Transfer prediction error (TPE)} is the root mean square of
 \eqn{\hat x^* - x_{\mathrm{true}}} over the target evaluation set.
 
 \strong{Out-of-distribution detection}: for a new target sample with
@@ -83,13 +83,18 @@ inverse prediction; the resulting distribution of \eqn{\hat x^*}
 captures the joint uncertainty.
 
 \strong{Reliability summary}: a transfer is deemed acceptable if TPE is
-below a user-supplied tolerance (default: 2x the source calibration
+below a heuristic tolerance (2x the source calibration
 standard error) and the OOD rate on the evaluation set is below 5\%.
 }
 
 \section{Limitations}{
 
 \itemize{
+\item Prediction intervals include independent source and transfer response
+noise in addition to parameter resampling. These variance terms can
+overlap when estimated from paired noisy measurements. Coverage is
+scenario dependent; these are approximate predictive intervals, not
+confidence intervals for the transfer coefficients.
 \item Assumes the source calibration is correctly specified. If the
 source calibration itself is biased, the transfer correction
 cannot fix it.

@@ -56,7 +56,8 @@ test_that("sci_anova welch alternative", {
     y = c(rnorm(20, 5, sd = 1), rnorm(20, 6, sd = 2)),
     g = factor(rep(c("A","B"), each = 20))
   )
-  res <- sci_anova(y ~ g, data = df, welch = TRUE)
+  expect_warning(res <- sci_anova(y ~ g, data = df, welch = TRUE),
+                 "not implemented for Welch")
   expect_true(res$welch)
 })
 

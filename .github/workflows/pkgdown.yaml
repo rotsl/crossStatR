@@ -51,6 +51,9 @@ jobs:
           stopifnot(file.exists("_site/index.html"))
         shell: Rscript {0}
 
+      - name: Build public reports
+        run: Rscript scripts/build_reports.R _site
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:

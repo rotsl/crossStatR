@@ -4,9 +4,9 @@
 
 `crossStatR` is an R package of statistics for experimental science. It supports biological assays, electrochemical measurements, optical and spectroscopic signals, and physics experiments. The package combines established methods (descriptive statistics, t-tests, regression, ANOVA, power analysis) with experimental diagnostics (region-level signal-difference testing, peak-evidence assessment, calibration-transfer risk, kinetic discrimination, experimental fragility, drift-attributed uncertainty, analytical detection-reliability curves, and stage-wise uncertainty-origin attribution).
 
-This is a development version (`0.99.2`). The API may change before 1.0.0.
+This is a development version (`0.99.3`). The API may change before 1.0.0.
 
-Local simulation diagnostics found poor peak-test calibration and under-coverage of transfer and drift intervals in the tested scenarios. These methods remain exploratory. Results and reproducible scripts are documented in [the validation report](docs/VALIDATION_REPORT.md).
+Local simulations found poor peak-test calibration, conservative transfer prediction intervals, and under-coverage of drift-fraction intervals in the tested scenarios. These methods remain exploratory. Results and reproducible scripts are documented in [the validation report](docs/VALIDATION_REPORT.md).
 
 ## Installation
 
@@ -34,7 +34,7 @@ Then verify it loads:
 ```r
 library(crossStatR)
 packageVersion("crossStatR")
-#> [1] '0.99.2'
+#> [1] '0.99.3'
 ```
 
 ## Function catalogue
@@ -91,16 +91,21 @@ ctrl <- rnorm(8, mean = 10, sd = 1.2)
 trt  <- rnorm(8, mean = 11.5, sd = 1.2)
 
 sci_describe(ctrl)
-#> <crossStatR::sci_describe>
-#> Groups: overall  (n = 8)
-#>     mean     sd     se    median       ci_low    ci_high   cv
-#>   10.21    1.18   0.42    10.30      9.23       11.19     0.12
+#> <crossStatR::describe> Descriptive statistics
+#> Total observations: 8  Biological replicates: n/a
+#>  group n     mean       sd      var        se   median      mad        cv
+#>      1 8 10.15775 1.023833 1.048233 0.3619795 10.30789 1.214052 0.1007933
+#>       iqr mean_ci_low mean_ci_high median_ci_low median_ci_high n_missing
+#>  1.470133      9.3018     11.01369      8.997246       11.91434         0
 
 sci_compare(ctrl, trt, test = "welch")
-#> <crossStatR::sci_compare> Welch two-sample t-test
-#>   t = -2.93, df = 13.4, p = 0.011
-#>   mean difference = -1.42 [95% CI: -2.49, -0.36]
-#>   Cohen's d = -1.04 [95% CI: -1.95, -0.10]
+#> <crossStatR::compare> Comparison: welch
+#> statistic = -2.3008,  p = 0.0387912
+#> effect (mean(x) - mean(y)) = -1.4047
+#> Effect sizes:
+#>      name  estimate        se    ci_low    ci_high
+#>   Cohen_d -1.150414 0.5601518 -2.351820 0.05099230
+#>  Hedges_g -1.087664 0.5295980 -2.223539 0.04821091
 ```
 
 ## Examples by domain
@@ -194,7 +199,7 @@ print(fr)
 
 The development version can be cited as follows:
 
-> Rohan R (2026). crossStatR: Scientific Statistics for Biological, Electrochemical, Optical and Physics Experiments. R package version 0.99.2. https://github.com/rotsl/crossStatR
+> Rohan R (2026). crossStatR: Scientific Statistics for Biological, Electrochemical, Optical and Physics Experiments. R package version 0.99.3. https://github.com/rotsl/crossStatR
 
 In R:
 

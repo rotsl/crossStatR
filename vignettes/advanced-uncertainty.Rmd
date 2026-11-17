@@ -24,13 +24,14 @@ library(ggplot2)
 
 ## Development validation
 
-This vignette accompanies development version 0.99.2.
+This vignette accompanies development version 0.99.3.
 The benchmark covers selected configurations, and the validation study uses
 100 datasets per metric with 99 resampling draws. These small simulations
 provide diagnostics; they do not establish general statistical calibration.
-The local study observed 24% peak false positives, 10% peak detection,
-74.9% transfer interval coverage, and 43% drift interval coverage in the
-tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+The refreshed local study observed 23% peak false positives, 10% peak
+detection, 98.8% transfer prediction coverage, and 33% drift-fraction
+coverage in the tested scenarios. Transfer intervals include response-noise
+draws and can be conservative. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
 
 ## What Category C is for
 
@@ -234,7 +235,10 @@ conditional-expectation Shapley effects studied by Owen and Prieur (2017)
 and Song, Nelson and Staum (2016). The function does not estimate the stage
 variances or implement nonlinear propagation. Its `total_ci` is a quantile
 interval for simulated additive errors, rather than a confidence interval
-for a variance component.
+for a variance component. The explicit alias is `total_prediction_interval`.
+The new `total_variance_ci` and `shapley_ci` describe Monte Carlo precision
+conditional on the supplied covariance. They do not estimate uncertainty
+in variance components fitted to experimental data.
 
 ```{r uncertainty-origin}
 # The example uses the following variance components from prior analyses:

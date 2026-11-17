@@ -8,7 +8,8 @@ Record: https://data.caltech.edu/records/bn6dh-p0s22
 
 caltech-current-summary.csv contains derived numerical diagnostics for all
 29 CA2 and 29 CV3 interlen text tables in the supplied analysis archive.
-Original measurement files are not included. The archive is identified by
+Test data is taken from https://doi.org/10.25989/198p-1x22.
+The archive is identified by
 20161101.114257.copied-20161107195737833PST.zip on the cited record.
 
 analysis: upstream stage (1 = CA2, 2 = CV3).

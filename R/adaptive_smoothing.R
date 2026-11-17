@@ -82,6 +82,10 @@
 #'
 #' @section Limitations:
 #'
+#'   - The PRESS approximation can behave poorly at reflected boundaries.
+#'     A fixed window avoids automatic selection but still requires assessment
+#'     of smoothing bias and sensitivity to the window width.
+#'
 #'   - Smoothing biases downstream inference. A smoothed peak height is a
 #'     downward-biased estimate of the true peak height; the bias is
 #'     largest for narrow peaks and aggressive smoothing. The same applies

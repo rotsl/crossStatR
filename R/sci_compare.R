@@ -58,6 +58,10 @@
 #'
 #' @section Limitations:
 #'
+#'   - Standardised-effect intervals are approximate: small samples use a
+#'     Student-t critical value when effect-size df is below 30. Hedges g
+#'     and its SE use the same small-sample correction factor.
+#'
 #'   - The permutation test is exact only when the exchangeability
 #'     assumption holds (typically true for random assignment, not for
 #'     observational data).
@@ -214,8 +218,12 @@ sci_compare <- function(x, y = NULL, paired = FALSE,
   d_val <- .cohens_d(xx, yy, paired = paired, hedges = FALSE)
   g_val <- .cohens_d(xx, yy, paired = paired, hedges = TRUE)
   d_se <- .se_cohens_d(d_val, nx, if (paired) nx else ny, paired = paired)
-  z <- stats::qnorm(1 - (1 - conf_level) / 2)
-  d_ci <- c(d_val - z * d_se, d_val + z * d_se)
+  df_d <- if (paired) nx - 1L else nx + ny - 2L
+  crit <- if (df_d >= 30L) stats::qnorm(1 - (1 - conf_level) / 2)
+          else stats::qt(1 - (1 - conf_level) / 2, df = df_d)
+  d_ci <- c(d_val - crit * d_se, d_val + crit * d_se)
+  g_se <- (1 - 3 / (4 * df_d - 1)) * d_se
+  g_ci <- c(g_val - crit * g_se, g_val + crit * g_se)
 
   out <- .crossstatr_result(
     list(test = test,
@@ -225,10 +233,9 @@ sci_compare <- function(x, y = NULL, paired = FALSE,
          effect_size = data.frame(
            name = c("Cohen_d", "Hedges_g"),
            estimate = c(d_val, g_val),
-           se = c(d_se, .se_cohens_d(g_val, nx, if (paired) nx else ny,
-                                     paired = paired)),
-           ci_low = c(d_ci[1L], NA_real_),
-           ci_high = c(d_ci[2L], NA_real_)),
+           se = c(d_se, g_se),
+           ci_low = c(d_ci[1L], g_ci[1L]),
+           ci_high = c(d_ci[2L], g_ci[2L])),
          n1 = nx, n2 = if (paired) NA_integer_ else ny,
          alternative = alternative,
          conf_level = conf_level,

@@ -39,7 +39,7 @@
 #'   where \eqn{\hat\delta} (and the slope correction, if any) are
 #'   estimated from the shared transfer samples via OLS.
 #'
-#'   **Transfer prediction error (TPE)** is the standard deviation of
+#'   **Transfer prediction error (TPE)** is the root mean square of
 #'   \eqn{\hat x^* - x_{\mathrm{true}}} over the target evaluation set.
 #'
 #'   **Out-of-distribution detection**: for a new target sample with
@@ -58,10 +58,16 @@
 #'   captures the joint uncertainty.
 #'
 #'   **Reliability summary**: a transfer is deemed acceptable if TPE is
-#'   below a user-supplied tolerance (default: 2x the source calibration
+#'   below a heuristic tolerance (2x the source calibration
 #'   standard error) and the OOD rate on the evaluation set is below 5%.
 #'
 #' @section Limitations:
+#'
+#'   - Prediction intervals include independent source and transfer response
+#'     noise in addition to parameter resampling. These variance terms can
+#'     overlap when estimated from paired noisy measurements. Coverage is
+#'     scenario dependent; these are approximate predictive intervals, not
+#'     confidence intervals for the transfer coefficients.
 #'
 #'   - Assumes the source calibration is correctly specified. If the
 #'     source calibration itself is biased, the transfer correction
@@ -181,21 +187,30 @@ calibration_transfer_risk <- function(source_cal, source_data, target_data,
 
   # Bootstrap transfer uncertainty
   .set_seed(seed)
+  n_eval <- length(eval_y_t)
   boot_x_pred <- replicate(n_boot, {
     # Sample source calibration parameters
     bs_beta <- MASS::mvrnorm(1L, mu = beta_s, Sigma = Vbeta_s)
     # Sample transfer-correction parameters
+    bs_sigma_s <- sigma_s * sqrt(df_s / stats::rchisq(1L, df = df_s))
     if (transfer_model == "offset") {
       b_alpha <- rnorm(1L, mean = alpha_t, sd = se_delta)
       b_beta <- 1
+      bs_sigma_t <- if (n_transfer >= 2L)
+        stats::sd(y_t_t - y_s_t) * sqrt((n_transfer - 1) / stats::rchisq(1L, df = n_transfer - 1))
+      else sigma_s
     } else if (transfer_model == "slope_offset") {
       ab <- MASS::mvrnorm(1L, mu = c(alpha_t, beta_t), Sigma = V_alpha_beta)
       b_alpha <- ab[1L]; b_beta <- ab[2L]
+      bs_sigma_t <- sigma_t  # use the target-eval sigma_t
     } else {
       b_alpha <- 0; b_beta <- 1
+      bs_sigma_t <- sigma_s
     }
-    y_s_c <- (eval_y_t - b_alpha) / b_beta
-    (y_s_c - bs_beta[1L]) / bs_beta[2L]
+    y_t_pert <- eval_y_t + rnorm(n_eval, sd = bs_sigma_t)
+    y_s_c <- (y_t_pert - b_alpha) / b_beta
+    y_s_c_with_noise <- y_s_c + rnorm(n_eval, sd = bs_sigma_s)
+    (y_s_c_with_noise - bs_beta[1L]) / bs_beta[2L]
   })
   boot_x_pred <- as.vector(boot_x_pred)
   # Prediction interval per sample: take percentiles per row

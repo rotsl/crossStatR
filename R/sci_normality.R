@@ -106,11 +106,13 @@ sci_normality <- function(x, group = NULL, test = c("shapiro", "ad", "auto"),
     if (is.na(s) || s == 0) {
       sk <- NA_real_; ku <- NA_real_
     } else {
-      z <- (xi - m) / s
       n <- length(xi)
-      sk <- (sqrt(n * (n - 1)) / (n - 2)) * sum(z^3) / n
+      m2 <- mean((xi - m)^2)
+      m3 <- mean((xi - m)^3)
+      m4 <- mean((xi - m)^4)
+      sk <- (sqrt(n * (n - 1)) / (n - 2)) * m3 / m2^(3 / 2)
       ku <- ((n - 1) * (n + 1) / ((n - 2) * (n - 3))) *
-        (sum(z^4) / n - 3 * (n - 1)^2 / (n + 1))
+        (m4 / m2^2 - 3 * (n - 1) / (n + 1))
     }
     # Pick the test
     chosen <- if (test == "auto") {

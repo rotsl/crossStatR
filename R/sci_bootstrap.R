@@ -289,7 +289,7 @@ sci_bootstrap <- function(data, statistic, n_replicates = 1000L,
     .safe_statistic(statistic, d_i)
   }, numeric(1L))
   jbar <- mean(jack, na.rm = TRUE)
-  diffs <- jack - jbar
+  diffs <- jbar - jack
   num <- sum(diffs^3)
   denom <- 6 * (sum(diffs^2))^1.5
   a_hat <- if (denom == 0 || !is.finite(denom)) 0 else num / denom

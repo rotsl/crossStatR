@@ -39,8 +39,9 @@
 #'   \item{drift_fit}{fitted drift values at each time point.}
 #'   \item{drift_se}{delta-method standard error of the drift fit at
 #'     each time point.}
-#'   \item{correction_ci}{n x 2 matrix giving the CI on the corrected
-#'     signal.}
+#'   \item{correction_ci}{n x 2 approximate pointwise uncertainty interval
+#'     combining drift-estimation error and measurement noise.}
+#'   \item{se_corr, sigma_y}{drift-correction SE and assumed measurement-noise SD.}
 #'   \item{model_summary}{list of model-specific summary statistics
 #'     (coefficients, R^2 where applicable, residual SE).}
 #'   \item{call}{the matched call.}
@@ -77,6 +78,13 @@
 #'         - 2\, \mathrm{Cov}(\hat d(t_i), \hat d(t_{\mathrm{ref}})).}
 #'
 #' @section Limitations:
+#'
+#'   - The interval adds measurement-noise variance to drift-correction
+#'     variance and uses a Student-t critical value with drift-fit residual df.
+#'     Reference-standard residual noise is assumed to represent sample noise.
+#'     Without standards, corrected-signal SD supplies a rough noise estimate.
+#'     Dependence between a fitted signal and its correction is not propagated;
+#'     these intervals are approximate and are not confidence bands for a mean.
 #'
 #'   - The drift model assumes the drift is a smooth function of time.
 #'     If the instrument suffers step changes (e.g. a calibration is
@@ -170,10 +178,32 @@ drift_correct_stat <- function(y, time, reference = NULL,
   # SE of the correction (d(t) - d(t_ref)) including the covariance.
   se_corr <- .drift_correction_se(drift_fit_obj, time, t_ref, drift_model)
 
+  inner_fit <- if (inherits(drift_fit_obj, "lm") || inherits(drift_fit_obj, "nls")) {
+    drift_fit_obj
+  } else if (is.list(drift_fit_obj) && !is.null(drift_fit_obj$model)) {
+    drift_fit_obj$model
+  } else {
+    NULL
+  }
+  if (inherits(inner_fit, "lm")) {
+    fit_sigma <- summary(inner_fit)$sigma
+    if (is.null(reference)) {
+      resid_y <- y - pred_at_time$fit + as.numeric(pred_at_ref$fit)
+      sigma_y <- if (length(resid_y) > 1L) stats::sd(resid_y) else fit_sigma
+    } else {
+      sigma_y <- fit_sigma
+    }
+  } else if (inherits(inner_fit, "nls")) {
+    sigma_y <- summary(inner_fit)$sigma
+  } else {
+    sigma_y <- NA_real_
+  }
+  se_total <- sqrt(se_corr^2 + if (is.finite(sigma_y)) sigma_y^2 else 0)
   alpha <- 1 - conf_level
-  z <- stats::qnorm(1 - alpha / 2)
-  correction_ci <- cbind(y_corrected - z * se_corr,
-                         y_corrected + z * se_corr)
+  df_resid <- max(1L, stats::df.residual(inner_fit))
+  tcrit <- stats::qt(1 - alpha / 2, df = df_resid)
+  correction_ci <- cbind(y_corrected - tcrit * se_total,
+                         y_corrected + tcrit * se_total)
   colnames(correction_ci) <- paste0(c(alpha / 2, 1 - alpha / 2) * 100, "%")
 
   model_summary <- .drift_model_summary(drift_fit_obj, drift_model)
@@ -185,6 +215,8 @@ drift_correct_stat <- function(y, time, reference = NULL,
       y_corrected = y_corrected,
       drift_fit = drift_at_time,
       drift_se = drift_se,
+      se_corr = se_corr,
+      sigma_y = sigma_y,
       correction_ci = correction_ci,
       model_summary = model_summary,
       drift_model = drift_model,

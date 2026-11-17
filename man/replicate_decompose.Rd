@@ -19,7 +19,7 @@ replicate_decompose(formula, data, type = "lmm", conf_level = 0.95)
 \value{
 A \code{crossstatr_replicate} object with elements:
 \item{variance_components}{data frame with columns \code{component},
-\code{variance}, \code{sd}, \code{proportion}, \code{ci_low}, \code{ci_high}. The \code{Residual}
+\code{variance}, \code{sd}, \code{proportion}, \code{ci_low}, \code{ci_high}, \code{ci_method}. The \code{Residual}
 row is always last.}
 \item{model}{the underlying \code{lmerMod} fit.}
 \item{method}{backend used (\code{"LMM (REML)"}).}
@@ -33,13 +33,10 @@ REML. The formula should contain random-effects terms such as
 \code{(1|bio) + (1|bio:tech)} to encode the nesting or crossing structure.
 }
 \details{
-Variance components are read from \code{lme4::VarCorr}, and Wald-type
-confidence intervals are constructed by treating the standard deviations
-(square root of the diagonal of each \code{VarCorr} block) as approximately
-normal. This is the standard large-sample approximation; for designs
-with few levels per random effect, profile-likelihood CIs from
-\code{confint(model, method = "profile")} are more accurate and can be
-obtained directly from the stored \code{model} element.
+Variance components are read from \code{lme4::VarCorr}. Confidence intervals
+use profile likelihood, matched by parameter name. If profiling fails,
+approximate Wald intervals are returned. The \code{ci_method} column identifies
+the method used for each component.
 }
 \section{Methodology}{
 
@@ -57,7 +54,9 @@ variance is \eqn{\sigma_{\mathrm{total}}^2 = \sum_l \sigma_l^2 +
 correlation for a single level is \eqn{\mathrm{ICC}_l =
   \sigma_l^2 / \sigma_{\mathrm{total}}^2}.
 
-The Wald CIs treat the standard deviation estimates
+Profile-likelihood bounds on standard deviations are squared to obtain
+variance bounds. When profiling fails, the fallback Wald CIs treat the
+standard deviation estimates
 \eqn{\hat\sigma_l = \sqrt{\mathrm{diag}(\mathrm{VarCorr}_l)}} as
 approximately normal. The asymptotic variance of \eqn{\hat\sigma_l} is
 approximated via the delta method on the variance estimate:
@@ -74,6 +73,12 @@ of the SD CI bounds.
 \section{Limitations}{
 
 \itemize{
+\item Random-slope rows report marginal coefficient variances. Their units
+differ from intercept variances, so the normalised \code{proportion} column
+is not a response-variance decomposition when slopes are present.
+Covariances remain available through the stored model.
+\item Profiling can fail near boundaries or in poorly identified designs.
+Fallback intervals are approximate and do not use Satterthwaite df.
 \item The LMM assumes normally distributed random effects and residuals.
 For count or proportion outcomes, use \code{lme4::glmer} with an
 appropriate family directly.

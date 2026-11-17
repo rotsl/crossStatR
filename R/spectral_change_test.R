@@ -46,10 +46,10 @@
 #'   \deqn{F = \frac{n_1 + n_2 - p - 1}{p(n_1 + n_2 - 2)}T^2}
 #'   is referenced to \eqn{F_{p,\,n_1+n_2-p-1}} (Hotelling, 1931).
 #'
-#'   When \eqn{S_p} is singular (typical when \eqn{p \geq n}), the
-#'   Moore-Penrose inverse (MASS::ginv) is used and the chi-square
-#'   approximation \eqn{T^2 \sim \chi^2_p} is reported; this is liberal in
-#'   small samples and should be supplemented with PERMANOVA.
+#'   When the pooled covariance is singular or the F-transform has
+#'   non-positive denominator df, the statistic is descriptive only.
+#'   A warning and `p_value = NA` are returned; `method = "permanova"`
+#'   supplies a separate permutation-based comparison.
 #'
 #'   PERMANOVA pseudo-F (Anderson, 2001). Let \eqn{d_{ij}} be the Euclidean
 #'   distance between rows `i` and `j` of `spectra`. The total sum of
@@ -73,8 +73,8 @@
 #' @section Limitations:
 #'
 #'   - The Hotelling F-transform requires \eqn{p < n_1 + n_2 - 1}. For
-#'     wider spectra the method falls back to a chi-square approximation, which is
-#'     anti-conservative; PERMANOVA is the safer choice in this regime.
+#'     wider spectra or singular pooled covariance, no Hotelling p-value is
+#'     returned. PERMANOVA requires its own exchangeability assumptions.
 #'   - PERMANOVA assumes exchangeability of observations under the null.
 #'     When groups have very different dispersions (not just means) the
 #'     test can be significant even without location differences; see
@@ -193,13 +193,17 @@ spectral_change_test <- function(spectra, group, wavelengths = NULL,
     Sp <- ((n1 - 1) * S1 + (n2 - 1) * S2) / (n1 + n2 - 2)
     Sp_inv <- tryCatch(solve(Sp), error = function(e) NULL)
     if (is.null(Sp_inv)) {
+      warning(sprintf(
+        "Hotelling T^2 requires invertible pooled covariance; here p=%d, n1+n2-1=%d. ",
+        p, n1 + n2 - 1L),
+        "Use method='permanova' instead; returning p_value=NA.",
+        call. = FALSE, immediate. = TRUE)
       Sp_inv <- MASS::ginv(Sp)
       T2 <- (n1 * n2 / (n1 + n2)) * sum(diff * (Sp_inv %*% diff))
       stat <- T2
-      chi_df <- min(p, n - 2L)
-      p_value <- stats::pchisq(T2, df = chi_df, lower.tail = FALSE)
-      method_label <- sprintf("Hotelling T^2 (chi-square approx, df=%d)",
-                              chi_df)
+      p_value <- NA_real_
+      method_label <- sprintf("Hotelling T^2 (singular Sp, p=%d, n1+n2-1=%d; p_value=NA)",
+                              p, n1 + n2 - 1L)
     } else {
       T2 <- (n1 * n2 / (n1 + n2)) * sum(diff * (Sp_inv %*% diff))
       df1 <- p
@@ -211,9 +215,14 @@ spectral_change_test <- function(spectra, group, wavelengths = NULL,
         method_label <- sprintf("Hotelling T^2 (F-transform, df1=%d, df2=%d)",
                                 df1, df2)
       } else {
-        p_value <- stats::pchisq(T2, df = p, lower.tail = FALSE)
+        warning(sprintf(
+          "Hotelling T^2: df2 = n1+n2-p-1 = %d <= 0 (p=%d, n1+n2-1=%d). ",
+          df2, p, n1 + n2 - 1L),
+          "Use method='permanova' instead; returning p_value=NA.",
+          call. = FALSE, immediate. = TRUE)
+        p_value <- NA_real_
         stat <- T2
-        method_label <- "Hotelling T^2 (chi-square approx, p >= n-2)"
+        method_label <- "Hotelling T^2 (df2<=0; p_value=NA)"
       }
     }
     out <- list(test_statistic = unname(stat),

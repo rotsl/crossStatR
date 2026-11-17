@@ -36,9 +36,11 @@
 #'   with `stats::nlminb` (box-constrained to non-negative parameters).
 #'
 #'   AIC and BIC use the Gaussian likelihood form
-#'   \deqn{\mathrm{AIC} = n\log(\mathrm{RSS}/n) + 2k, \qquad
-#'         \mathrm{BIC} = n\log(\mathrm{RSS}/n) + k\log(n),}
-#'   where `k` is the number of parameters. AIC delta is
+#'   \deqn{\mathrm{AIC} = n\log(\mathrm{RSS}/n) + 2(k+1), \qquad
+#'         \mathrm{BIC} = n\log(\mathrm{RSS}/n) + (k+1)\log(n),}
+#'   where `k` counts mean-model parameters and the extra parameter is
+#'   residual variance. The common Gaussian likelihood constant is omitted.
+#'   AIC delta is
 #'   \eqn{\Delta_i = \mathrm{AIC}_i - \min_j \mathrm{AIC}_j}.
 #'
 #'   Standard errors for parameters are computed via linearisation. With
@@ -232,8 +234,8 @@ kinetic_model_compare <- function(time, conc, models = NULL, start = NULL,
   names(params) <- pnames
 
   sigma2 <- rss / max(1, n - k)
-  AIC <- n * log(rss / n) + 2 * k
-  BIC <- n * log(rss / n) + k * log(n)
+  AIC <- n * log(rss / n) + 2 * (k + 1L)
+  BIC <- n * log(rss / n) + (k + 1L) * log(n)
 
   J <- tryCatch(
     .num_jacobian(params, function(p) model_func(p, time)),

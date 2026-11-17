@@ -12,7 +12,8 @@ parameter_uncertainty(
   n_sim = 1000L,
   conf_level = 0.95,
   seed = NULL,
-  original_data = NULL
+  original_data = NULL,
+  df = Inf
 )
 }
 \arguments{
@@ -36,6 +37,10 @@ elements \code{data} (the original data frame) and \code{refit} (a function
 taking a data subset and returning a parameter vector of the same
 length as \code{params}). If \code{NULL} and \code{method = "bootstrap"}, the
 function falls back to the delta method with a warning.}
+
+\item{df}{positive degrees of freedom for delta-method intervals. The
+default \code{Inf} uses a normal critical value; residual degrees of freedom
+from a fitted model can be supplied for a Student-t approximation.}
 }
 \value{
 A \code{crossstatr_param_uncert} object with elements:
@@ -77,8 +82,8 @@ where \eqn{J_{ij} = \partial g_i / \partial \theta_j} is computed
 numerically by central finite differences. The variance of
 \eqn{g(\hat{\theta})} is approximated by
 \deqn{\mathrm{Cov}(g(\hat{\theta})) \approx J\,\mathrm{Cov}(\hat{\theta})\,J'.}
-Confidence intervals use a Student-t critical value with \code{length(params)}
-df, matching the common choice in nonlinear regression software.
+Delta-method intervals use a normal critical value by default. A finite
+\code{df} requests a Student-t approximation with those degrees of freedom.
 
 Monte Carlo: draw \eqn{\theta^{(b)} \sim \mathrm{MVN}(\hat{\theta},
   \hat{\Sigma})} for \verb{b = 1, ..., n_sim}, compute \eqn{g^{(b)} =

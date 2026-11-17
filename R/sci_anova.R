@@ -38,6 +38,14 @@
 #'
 #'   Tukey HSD uses the studentized range distribution.
 #'
+#' @section Limitations:
+#'
+#'   - Welch effect sizes are descriptive sums-of-squares summaries, not
+#'     heteroscedasticity-corrected inferential estimates. Factorial effects
+#'     use sequential (Type I) sums of squares and depend on term order.
+#'     Welch inference is restricted to one-way models. Tukey post-hoc tests
+#'     are unavailable on that path; a warning accompanies such requests.
+#'
 #' @references
 #'   - Welch, B. L. (1951). On the comparison of several mean values: An
 #'     alternative approach. Biometrika, 38, 330-336.
@@ -81,11 +89,15 @@ sci_anova <- function(formula, data, welch = FALSE,
   terms_obj <- stats::terms(formula, data = data)
   pred_vars <- attr(terms_obj, "term.labels")
 
+  if (welch && length(pred_vars) != 1L) {
+    stop("Welch ANOVA requires a one-way formula.", call. = FALSE)
+  }
   if (welch && length(pred_vars) == 1L) {
     wt <- stats::oneway.test(formula, data = data)
     aov_obj <- NULL
     anova_table <- data.frame(
       `Df` = wt$parameter[1L],
+      denominator_df = wt$parameter[2L],
       `Sum Sq` = NA_real_,
       `Mean Sq` = NA_real_,
       `F value` = as.numeric(wt$statistic),
@@ -100,27 +112,73 @@ sci_anova <- function(formula, data, welch = FALSE,
 
   # Effect sizes (one-way only; for factorial use partial eta^2 per term)
   ss_total <- sum(anova_table$`Sum Sq`, na.rm = TRUE)
-  ss_effect <- anova_table$`Sum Sq`[1L]
   ms_within <- anova_table$`Mean Sq`[nrow(anova_table)]
-  k <- anova_table$Df[1L] + 1L
-  N <- sum(anova_table$Df) + 1L
-  eta2 <- ss_effect / ss_total
-  eta2_p <- ss_effect / (ss_effect + anova_table$`Sum Sq`[nrow(anova_table)])
-  omega2 <- (ss_effect - (k - 1) * ms_within) / (ss_total + ms_within)
-
-  effect_sizes <- data.frame(
-    effect = c("eta_squared", "partial_eta_squared", "omega_squared"),
-    estimate = c(eta2, eta2_p, omega2),
-    interpretation = c(
-      .interpret_eta(eta2),
-      .interpret_eta(eta2_p),
-      .interpret_eta(omega2)
-    ),
-    stringsAsFactors = FALSE)
+  ss_within <- anova_table$`Sum Sq`[nrow(anova_table)]
+  if (welch && length(pred_vars) == 1L) {
+    grp <- mf[[pred_vars[1L]]]; vals <- mf[[1L]]
+    gmeans <- tapply(vals, grp, mean)
+    gvars  <- tapply(vals, grp, var)
+    ns     <- tapply(vals, grp, length)
+    grand  <- mean(vals)
+    ss_between <- sum(ns * (gmeans - grand)^2)
+    ss_total_w  <- sum((vals - grand)^2)
+    ms_within_w <- sum((ns - 1) * gvars) / (sum(ns) - length(ns))
+    k_w <- length(gmeans)
+    eta2  <- ss_between / ss_total_w
+    eta2_p <- ss_between / (ss_between + sum((ns - 1) * gvars))
+    omega2 <- (ss_between - (k_w - 1) * ms_within_w) / (ss_total_w + ms_within_w)
+    effect_sizes <- data.frame(
+      effect = c("eta_squared", "partial_eta_squared", "omega_squared"),
+      estimate = c(eta2, eta2_p, omega2),
+      interpretation = c(
+        .interpret_eta(eta2),
+        .interpret_eta(eta2_p),
+        .interpret_eta(omega2)
+      ),
+      stringsAsFactors = FALSE)
+  } else if (length(pred_vars) == 1L) {
+    ss_effect <- anova_table$`Sum Sq`[1L]
+    k <- anova_table$Df[1L] + 1L
+    eta2 <- ss_effect / ss_total
+    eta2_p <- ss_effect / (ss_effect + ss_within)
+    omega2 <- (ss_effect - (k - 1) * ms_within) / (ss_total + ms_within)
+    effect_sizes <- data.frame(
+      effect = c("eta_squared", "partial_eta_squared", "omega_squared"),
+      estimate = c(eta2, eta2_p, omega2),
+      interpretation = c(
+        .interpret_eta(eta2),
+        .interpret_eta(eta2_p),
+        .interpret_eta(omega2)
+      ),
+      stringsAsFactors = FALSE)
+  } else {
+    terms_df <- anova_table[seq_len(nrow(anova_table) - 1L), , drop = FALSE]
+    effect_sizes <- do.call(rbind, lapply(seq_len(nrow(terms_df)), function(i) {
+      ss_e <- terms_df$`Sum Sq`[i]
+      df_e <- terms_df$Df[i]
+      eta2_i  <- ss_e / ss_total
+      eta2_p_i <- ss_e / (ss_e + ss_within)
+      omega2_i <- (ss_e - df_e * ms_within) / (ss_total + ms_within)
+      data.frame(
+        term = rownames(terms_df)[i],
+        effect = c("eta_squared", "partial_eta_squared", "omega_squared"),
+        estimate = c(eta2_i, eta2_p_i, omega2_i),
+        interpretation = c(
+          .interpret_eta(eta2_i),
+          .interpret_eta(eta2_p_i),
+          .interpret_eta(omega2_i)
+        ),
+        stringsAsFactors = FALSE)
+    }))
+  }
 
   # Post-hoc (only for one-way, only if aov was fit, i.e. not Welch path)
   posthoc_res <- NULL
-  if (posthoc != "none" && length(pred_vars) == 1L && !is.null(aov_obj)) {
+  if (welch && posthoc != "none" && length(pred_vars) == 1L) {
+    warning("Post-hoc 'Tukey' is not implemented for Welch's ANOVA. ",
+            "Consider Games-Howell or pairwise Welch t-tests.",
+            call. = FALSE)
+  } else if (posthoc != "none" && length(pred_vars) == 1L && !is.null(aov_obj)) {
     if (posthoc == "tukey") {
       tk <- stats::TukeyHSD(aov_obj, conf.level = conf_level)
       posthoc_res <- as.data.frame(tk[[1L]])

@@ -178,7 +178,10 @@ batch_effect_quantify <- function(formula, data, batch,
          "the analysis to within-batch comparisons.",
          call. = FALSE)
   }
-  chi_test <- suppressWarnings(stats::chisq.test(tab))
+  correct_2x2 <- all(dim(tab) == c(2L, 2L))
+  chi_test <- suppressWarnings(
+    stats::chisq.test(tab, correct = correct_2x2)
+  )
   confound_p <- as.numeric(chi_test$p.value)
   chi_out <- list(statistic = unname(chi_test$statistic),
                   p_value = confound_p,
@@ -264,7 +267,6 @@ batch_effect_quantify <- function(formula, data, batch,
     rss_base <- sum(stats::resid(base_fit)^2)
     batch_ss <- rss_base - rss_full
     total_ss <- rss_base
-    batch_pct <- 100 * batch_ss / total_ss
 
     # Approximate one-way random effects variance from batch SS.
     sigma2_resid <- rss_full / df_resid_full
@@ -276,6 +278,7 @@ batch_effect_quantify <- function(formula, data, batch,
     total_var <- sigma2_batch + sigma2_resid
     icc <- if (total_var > 0) sigma2_batch / total_var else NA_real_
 
+    batch_pct <- if (total_var > 0) 100 * sigma2_batch / total_var else NA_real_
     treat_coef_base <- get_treat_coef(base_fit, treat_var)
     treat_coef_full <- get_treat_coef(full_fit, treat_var)
     treat_change <- treat_coef_full - treat_coef_base

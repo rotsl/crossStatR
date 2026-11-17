@@ -63,6 +63,9 @@ flagged when \eqn{|z^R_i| > 3.5}.
 \section{Limitations}{
 
 \itemize{
+\item Robust z scores divide deviations by the normal-consistent MAD.
+If the MAD is zero, median-valued observations receive zero and
+nonzero deviations receive signed infinity, preserving their flags.
 \item For very small samples (n < 5) the IQR/MAD rules have low power
 and the z-score rule is unstable. Results are returned with a
 \code{n < 5} warning.

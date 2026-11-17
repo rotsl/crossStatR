@@ -64,6 +64,10 @@
 #'
 #' @section Limitations:
 #'
+#'   - AsLS weights are updated after each solve; the last reported weights
+#'     can differ from the weights used for the last fitted baseline. No
+#'     uncertainty band is computed and `conf_level` is reserved for future use.
+#'
 #'   - ALS with large `lambda` produces highly correlated baselines; small
 #'     changes in the signal can shift the whole baseline. Inspect
 #'     `corrected` for systematic residual structure before downstream use.

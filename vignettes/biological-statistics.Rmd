@@ -24,13 +24,14 @@ library(ggplot2)
 
 ## Development validation
 
-This vignette accompanies development version 0.99.2.
+This vignette accompanies development version 0.99.3.
 The benchmark covers selected configurations, and the validation study uses
 100 datasets per metric with 99 resampling draws. These small simulations
 provide diagnostics; they do not establish general statistical calibration.
-The local study observed 24% peak false positives, 10% peak detection,
-74.9% transfer interval coverage, and 43% drift interval coverage in the
-tested scenarios. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
+The refreshed local study observed 23% peak false positives, 10% peak
+detection, 98.8% transfer prediction coverage, and 33% drift-fraction
+coverage in the tested scenarios. Transfer intervals include response-noise
+draws and can be conservative. These results limit inferential use of these methods. Report sources are `scripts/benchmark.R` and `scripts/validate.R`.
 
 ## The pseudo-replication problem
 
@@ -180,7 +181,7 @@ refit with `welch = TRUE`; if the variances look equal across groups the
 classic F-test is fine, and if they do not, refit:
 
 ```{r anova-welch}
-fit_w <- sci_anova(y ~ dose_f, data = bio_means_all, welch = TRUE)
+fit_w <- sci_anova(y ~ dose_f, data = bio_means_all, welch = TRUE, posthoc = "none")
 print(fit_w)
 ```
 

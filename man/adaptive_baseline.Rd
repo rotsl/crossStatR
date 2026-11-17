@@ -95,6 +95,9 @@ but enforces the baseline-lies-below-signal property.
 \section{Limitations}{
 
 \itemize{
+\item AsLS weights are updated after each solve; the last reported weights
+can differ from the weights used for the last fitted baseline. No
+uncertainty band is computed and \code{conf_level} is reserved for future use.
 \item ALS with large \code{lambda} produces highly correlated baselines; small
 changes in the signal can shift the whole baseline. Inspect
 \code{corrected} for systematic residual structure before downstream use.

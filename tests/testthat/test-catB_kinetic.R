@@ -20,7 +20,9 @@ test_that("spectral_change_test T2", {
   y2 <- matrix(rnorm(n2 * m, mean = 0.2), nrow = n2)
   grp <- factor(rep(c("A","B"), c(n1, n2)))
   spectra <- rbind(y1, y2)
-  res <- spectral_change_test(spectra, group = grp, method = "t2")
+  expect_warning(res <- spectral_change_test(spectra, group = grp, method = "t2"),
+                 "Use method='permanova'")
+  expect_true(is.na(res$p_value))
   expect_s3_class(res, "crossstatr_spectral_change")
 })
 
@@ -57,8 +59,9 @@ test_that("parameter_uncertainty monte carlo", {
 test_that("timepoint_optimize basic", {
   model <- function(p, t) p[1] * exp(-p[2] * t)
   params <- c(1, 0.1)
-  res <- timepoint_optimize(model, params, t_range = c(0, 50),
-                            n_candidates = 5, criterion = "d_optimal")
+  expect_warning(res <- timepoint_optimize(model, params, t_range = c(0, 50),
+                            n_candidates = 5, criterion = "d_optimal"),
+                 "rank-deficient")
   expect_s3_class(res, "crossstatr_timepoint")
 })
 

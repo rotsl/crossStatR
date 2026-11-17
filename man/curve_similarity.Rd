@@ -109,6 +109,9 @@ the metric.
 \section{Limitations}{
 
 \itemize{
+\item Distance intervals use independent residual resampling rather than
+paired resampling of repeated experimental curves. Dependence within
+and between curves is not preserved by that bootstrap.
 \item Linear interpolation onto a common grid assumes the true curve is
 piecewise linear between sampled x points. Coarse sampling reduces
 the fidelity of the interpolated values.

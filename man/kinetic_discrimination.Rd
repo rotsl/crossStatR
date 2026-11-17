@@ -89,6 +89,10 @@ reported as a quick summary of design quality.
 \section{Limitations}{
 
 \itemize{
+\item AIC and BIC count the residual variance as an estimated parameter.
+Simulations where all candidate fits fail are reported separately as
+\code{n_no_convergence}. Conditional selection frequencies excluding those
+failures are returned in \code{discrimination_probabilities_clean}.
 \item The simulated measurement noise is assumed homoscedastic
 Gaussian. Real experiments with heteroscedastic or correlated
 noise will give different discrimination rates.

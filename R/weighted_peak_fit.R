@@ -77,6 +77,11 @@
 #'
 #' @section Limitations:
 #'
+#'   - Automatic peak candidates use a local prominence heuristic. The
+#'     candidate count is not a statistical model-selection result. Nonlinear
+#'     fitting can return an unconverged fit with a warning; such estimates
+#'     and intervals require inspection of the stored fit convergence status.
+#'
 #'   - `nls` with `algorithm = "port"` will fail to converge if the peaks
 #'     are too close together relative to their widths, or if `start` is
 #'     far from the optimum. Always inspect the residuals.

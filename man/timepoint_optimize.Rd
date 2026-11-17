@@ -111,6 +111,11 @@ Sensitivities are computed by central finite differences via
 \section{Limitations}{
 
 \itemize{
+\item D-optimal search completes rank first when the starting information
+matrix is singular. Candidates are ordered by rank, then by the product
+of positive squared singular values. A warning identifies this phase;
+the reported final criterion remains the determinant. A final singular
+design produces a warning and has no finite D-optimal criterion.
 \item Local optimality: the criteria are evaluated at the supplied \code{params}
 only. Bayesian or minimax designs that integrate over a prior on
 \code{params} are more robust when the assumed parameter values are

@@ -54,6 +54,11 @@
 #'
 #' @section Limitations:
 #'
+#'   - AIC and BIC count the residual variance as an estimated parameter.
+#'     Simulations where all candidate fits fail are reported separately as
+#'     `n_no_convergence`. Conditional selection frequencies excluding those
+#'     failures are returned in `discrimination_probabilities_clean`.
+#'
 #'   - The simulated measurement noise is assumed homoscedastic
 #'     Gaussian. Real experiments with heteroscedastic or correlated
 #'     noise will give different discrimination rates.
@@ -119,7 +124,8 @@ kinetic_discrimination <- function(models, starts, true_model = 1L,
     p <- starts[[k]]
     G <- .num_jacobian(p, function(par) models[[k]](par, times))
     sv <- svd(G)$d
-    kappa <- max(sv) / min(sv[sv > .Machine$double.eps])
+    positive <- sv[sv > .Machine$double.eps]
+    kappa <- if (length(positive) < length(p)) Inf else max(sv) / min(positive)
     list(condition_number = kappa, params = names(p))
   })
   names(identifiability) <- model_names
@@ -151,9 +157,9 @@ kinetic_discrimination <- function(models, starts, true_model = 1L,
         n_p <- length(starts[[k]])
         n <- length(times)
         if (criterion == "aic") {
-          n * log(rss / n) + 2 * n_p
+          n * log(rss / n) + 2 * (n_p + 1L)
         } else {
-          n * log(rss / n) + log(n) * n_p
+          n * log(rss / n) + (n_p + 1L) * log(n)
         }
       }, error = function(e) {
         converged_mat[b, k] <<- FALSE
@@ -161,12 +167,22 @@ kinetic_discrimination <- function(models, starts, true_model = 1L,
       })
     }, numeric(1L))
     names(aics) <- model_names
-    picks[b] <- model_names[which.min(aics)]
+    if (all(is.infinite(aics))) {
+      picks[b] <- "no_convergence"
+    } else {
+      picks[b] <- model_names[which.min(aics)]
+    }
   }
 
   # Discrimination probabilities
   disc_probs <- vapply(model_names, function(nm) mean(picks == nm),
                        numeric(1L))
+  n_no_conv <- sum(picks == "no_convergence")
+  disc_probs_clean <- vapply(model_names, function(nm) {
+    ok <- picks != "no_convergence"
+    if (sum(ok) == 0L) return(NA_real_)
+    mean(picks[ok] == nm)
+  }, numeric(1L))
   mcse <- .mcse_p(disc_probs, n_sim)
 
   # Power to distinguish each pair (under alternative that true_model is true)
@@ -192,6 +208,8 @@ kinetic_discrimination <- function(models, starts, true_model = 1L,
 
   .crossstatr_result(
     list(discrimination_probabilities = disc_probs,
+         discrimination_probabilities_clean = disc_probs_clean,
+         n_no_convergence = n_no_conv,
          mcse = mcse,
          criterion = criterion,
          n_sim = n_sim,
@@ -216,6 +234,7 @@ print.crossstatr_kinetic_discrimination <- function(x, ...) {
     p <- x$discrimination_probabilities[[nm]]
     cat(sprintf("  %s: %.3f (MCSE %.4f)\n", nm, p, .mcse_p(p, x$n_sim)))
   }
+  cat(sprintf("All-candidate failures: %d / %d\n", x$n_no_convergence, x$n_sim))
   cat("\nCondition numbers:\n")
   for (nm in names(x$identifiability)) {
     cat(sprintf("  %s: kappa = %.2g\n", nm,

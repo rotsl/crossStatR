@@ -56,9 +56,11 @@ Each model is fit by minimising the residual sum of squares
 with \code{stats::nlminb} (box-constrained to non-negative parameters).
 
 AIC and BIC use the Gaussian likelihood form
-\deqn{\mathrm{AIC} = n\log(\mathrm{RSS}/n) + 2k, \qquad
-        \mathrm{BIC} = n\log(\mathrm{RSS}/n) + k\log(n),}
-where \code{k} is the number of parameters. AIC delta is
+\deqn{\mathrm{AIC} = n\log(\mathrm{RSS}/n) + 2(k+1), \qquad
+        \mathrm{BIC} = n\log(\mathrm{RSS}/n) + (k+1)\log(n),}
+where \code{k} counts mean-model parameters and the extra parameter is
+residual variance. The common Gaussian likelihood constant is omitted.
+AIC delta is
 \eqn{\Delta_i = \mathrm{AIC}_i - \min_j \mathrm{AIC}_j}.
 
 Standard errors for parameters are computed via linearisation. With
